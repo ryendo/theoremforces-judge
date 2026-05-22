@@ -1,18 +1,23 @@
 name: Check Lean submission
 
-# Runs on every push to a `submission/*` branch that touches a
-# Submission_*.lean file. main is protected — only the Leanforces web app
-# is allowed to push to submission branches.
+# Runs on every push to a `submission/*` or `challenge-validation/*`
+# branch that touches either a Submission_*.lean (user proof attempt)
+# or a Validation_*.lean (auto-check of a new user challenge).
+# main is protected — only the LeanForces web app is allowed to push
+# to these branches.
 
 on:
   push:
     branches:
       - "submission/**"
+      - "challenge-validation/**"
     paths:
       - "Leanforces/Challenges/**/Submissions/Submission_*.lean"
+      - "Leanforces/Challenges/**/Validations/Validation_*.lean"
   pull_request:
     paths:
       - "Leanforces/Challenges/**/Submissions/Submission_*.lean"
+      - "Leanforces/Challenges/**/Validations/Validation_*.lean"
 
 permissions:
   contents: read
@@ -87,7 +92,7 @@ jobs:
             echo "Detected module from commit message: $MODULE_FROM_MSG"
             exit 0
           fi
-          FILES=$(git diff-tree --no-commit-id --name-only -r HEAD | grep -E '^Leanforces/Challenges/.+/Submissions/Submission_[A-Za-z0-9_-]+\.lean$' || true)
+          FILES=$(git diff-tree --no-commit-id --name-only -r HEAD | grep -E '^Leanforces/Challenges/.+/(Submissions/Submission_|Validations/Validation_)[A-Za-z0-9_-]+\.lean$' || true)
           if [ -z "$FILES" ]; then
             echo "No submission file found — falling back to full build."
             echo "module=" >> "$GITHUB_OUTPUT"
