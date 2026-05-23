@@ -3,7 +3,7 @@ name: Check Lean submission
 # Runs on every push to a `submission/*` or `challenge-validation/*`
 # branch that touches either a Submission_*.lean (user proof attempt)
 # or a Validation_*.lean (auto-check of a new user challenge).
-# main is protected — only the LeanForces web app is allowed to push
+# main is protected — only the TheoremForces web app is allowed to push
 # to these branches.
 
 on:
@@ -12,12 +12,12 @@ on:
       - "submission/**"
       - "challenge-validation/**"
     paths:
-      - "Leanforces/Challenges/**/Submissions/Submission_*.lean"
-      - "Leanforces/Challenges/**/Validations/Validation_*.lean"
+      - "Theoremforces/Challenges/**/Submissions/Submission_*.lean"
+      - "Theoremforces/Challenges/**/Validations/Validation_*.lean"
   pull_request:
     paths:
-      - "Leanforces/Challenges/**/Submissions/Submission_*.lean"
-      - "Leanforces/Challenges/**/Validations/Validation_*.lean"
+      - "Theoremforces/Challenges/**/Submissions/Submission_*.lean"
+      - "Theoremforces/Challenges/**/Validations/Validation_*.lean"
 
 permissions:
   contents: read
@@ -92,7 +92,7 @@ jobs:
             echo "Detected module from commit message: $MODULE_FROM_MSG"
             exit 0
           fi
-          FILES=$(git diff-tree --no-commit-id --name-only -r HEAD | grep -E '^Leanforces/Challenges/.+/(Submissions/Submission_|Validations/Validation_)[A-Za-z0-9_-]+\.lean$' || true)
+          FILES=$(git diff-tree --no-commit-id --name-only -r HEAD | grep -E '^Theoremforces/Challenges/.+/(Submissions/Submission_|Validations/Validation_)[A-Za-z0-9_-]+\.lean$' || true)
           if [ -z "$FILES" ]; then
             echo "No submission file found — falling back to full build."
             echo "module=" >> "$GITHUB_OUTPUT"
@@ -103,13 +103,80 @@ jobs:
           echo "module=$MODULE" >> "$GITHUB_OUTPUT"
           echo "Detected module from diff: $MODULE"
 
-      - name: Build (targeted)
+      - name: Build (targeted) + capture axiom output
+        id: build
         run: |
           set -e
+          mkdir -p .judge-out
           if [ -n "${{ steps.find.outputs.module }}" ]; then
             echo "lake build ${{ steps.find.outputs.module }}"
-            lake build "${{ steps.find.outputs.module }}"
+            lake build "${{ steps.find.outputs.module }}" 2>&1 | tee .judge-out/build.log
           else
             echo "lake build (full)"
-            lake build
+            lake build 2>&1 | tee .judge-out/build.log
           fi
+          # Extract the `#print axioms solution_target` line. Lean
+          # prints either:
+          #   'solution_target' does not depend on any axioms
+          #   'solution_target' depends on axioms: a, b, c
+          # We persist whatever line matched (or the empty string).
+          grep -E "(does not depend on any axioms|depends on axioms)" \
+               .judge-out/build.log > .judge-out/axioms.txt || true
+          echo "axioms_raw=$(cat .judge-out/axioms.txt | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+
+      # ── Axiom-whitelist enforcement ──────────────────────────
+      # The web app embeds `axiom_whitelist=<csv>` into the commit
+      # message of every submission push (mirroring the existing
+      # `module=…` convention). If that whitelist is present we
+      # verify the actually-used axioms are a subset of it; any
+      # extra axiom flips the workflow to FAILURE before we ever
+      # report success back to the web app. The web app's webhook
+      # then records the failure exactly as if `lake build` had
+      # failed, with the violation list in `judgeLog`.
+      - name: Enforce axiom whitelist
+        run: |
+          set -e
+          MSG=$(git log -1 --pretty=%B)
+          WHITELIST=$(echo "$MSG" | grep -oE 'axiom_whitelist=[A-Za-z0-9_.,\-]+' | head -1 | cut -d= -f2 || true)
+          if [ -z "$WHITELIST" ]; then
+            echo "::warning::No axiom_whitelist in commit message — skipping enforcement (legacy submission)."
+            exit 0
+          fi
+          AX_LINE=$(cat .judge-out/axioms.txt || true)
+          if echo "$AX_LINE" | grep -qi "does not depend on any axioms"; then
+            echo "✓ proof uses zero axioms — within whitelist by definition."
+            exit 0
+          fi
+          USED=$(echo "$AX_LINE" | sed -E "s/.*depends on axioms[: ]+//" | tr ',' '\n' \
+                   | sed -E 's/^[[:space:]]+|[[:space:]]+$//g' \
+                   | grep -E "^[A-Za-z_][A-Za-z0-9_.]*$" || true)
+          if [ -z "$USED" ]; then
+            echo "::warning::Could not parse axiom list from build log; failing safe."
+            exit 1
+          fi
+          # Build allowed set into a temp file for cheap membership testing.
+          echo "$WHITELIST" | tr ',' '\n' | sort -u > .judge-out/allowed.txt
+          VIOLATIONS=""
+          for a in $USED; do
+            if ! grep -qxF "$a" .judge-out/allowed.txt; then
+              VIOLATIONS="$VIOLATIONS $a"
+            fi
+          done
+          if [ -n "$VIOLATIONS" ]; then
+            echo "::error::Axiom-whitelist violation — proof uses unwhitelisted axioms:$VIOLATIONS"
+            echo "  whitelist: $(tr '\n' ',' < .judge-out/allowed.txt)"
+            exit 1
+          fi
+          echo "✓ all used axioms are whitelisted."
+
+      # Surface the raw axiom line as an artifact so the web app's
+      # webhook handler can fetch + record it on the submission row
+      # without re-downloading the full build log.
+      - name: Upload axiom artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: axioms
+          path: .judge-out/axioms.txt
+          if-no-files-found: ignore
+          retention-days: 7

@@ -10,7 +10,7 @@ package leanforces where
   -- Lake configuration for the judge repo. Operator-owned.
   --
   -- The web app never commits to this repo by hand. It pushes auto-generated
-  -- files into `Leanforces/Challenges/<slug>/Submissions/Submission_<id>.lean`
+  -- files into `Theoremforces/Challenges/<slug>/Submissions/Submission_<id>.lean`
   -- on a `submission/<id>` branch. GitHub Actions then does a TARGETED
   -- `lake build <Module>` so we don't recompile every submission on every run.
   leanOptions := #[
@@ -19,7 +19,7 @@ package leanforces where
   ]
 
 @[default_target]
-lean_lib Leanforces where
-  -- Build everything under Leanforces/, including auto-generated
+lean_lib Theoremforces where
+  -- Build everything under Theoremforces/, including auto-generated
   -- Submission_*.lean files. Per-file targeted builds happen in CI.
-  roots := #[`Leanforces]
+  roots := #[`Theoremforces]
