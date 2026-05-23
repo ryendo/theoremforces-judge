@@ -147,7 +147,12 @@ jobs:
             echo "✓ proof uses zero axioms — within whitelist by definition."
             exit 0
           fi
-          USED=$(echo "$AX_LINE" | sed -E "s/.*depends on axioms[: ]+//" | tr ',' '\n' \
+          # Lean 4.13+ formats the list as `[a, b, c]`. Older Lean
+          # outputs `a, b, c` without brackets. `tr -d '[]'` handles
+          # both: it strips brackets if present, no-op if not.
+          USED=$(echo "$AX_LINE" | sed -E "s/.*depends on axioms[: ]+//" \
+                   | tr -d '[]' \
+                   | tr ',' '\n' \
                    | sed -E 's/^[[:space:]]+|[[:space:]]+$//g' \
                    | grep -E "^[A-Za-z_][A-Za-z0-9_.]*$" || true)
           if [ -z "$USED" ]; then
