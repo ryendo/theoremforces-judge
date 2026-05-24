@@ -23,3 +23,5 @@ def solution_target : ∀ (n : Nat), n * 0 = 0 := answer
 #print axioms solution_target
 
 end Theoremforces.Challenges.User.U_nat_mul_zero.Submissions.Submission_cmpjdumgq0003tg1uwrec5jwr
+
+-- backfill rerun 20260524T215553
