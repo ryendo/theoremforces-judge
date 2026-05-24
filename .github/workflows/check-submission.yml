@@ -30,7 +30,16 @@ jobs:
   check:
     # GitHub-hosted runner only. Never switch to a self-hosted runner.
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # DoS defence: cap any single submission at 10 minutes wall-clock
+    # so a deliberately-heavy proof (recursive `simp`, runaway
+    # `aesop`, megabyte-sized term tree, etc.) can't burn through
+    # the operator's monthly GitHub Actions minutes. The previous
+    # 25-minute cap was sized for the initial Mathlib cache miss;
+    # post-cache runs finish in seconds, and the cache step is its
+    # own ~5-minute budget below. If a legitimate hard problem
+    # genuinely needs more, raise it per-challenge by adding a
+    # `timeout-minutes:` override on a copy of this workflow.
+    timeout-minutes: 10
 
     steps:
       - name: Checkout (with last 2 commits so we can diff)
