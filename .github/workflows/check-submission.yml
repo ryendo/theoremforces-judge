@@ -330,6 +330,13 @@ jobs:
           fi
           # Use jq to compose so quoting / escaping is safe even
           # when the raw output contains newlines / quotes / unicode.
+          #
+          # CRITICAL: use `if … else null end` for the optional
+          # fields, NOT `select(length > 0)`. In jq, `{x: empty}`
+          # produces an EMPTY STREAM (not `{}` or `{x: null}`),
+          # which means a single empty optional collapses the
+          # entire output to zero bytes. This burned us once
+          # already; please don't switch back to `select`.
           jq -n \
             --arg sub_id      "$SUB_ID" \
             --arg ch_slug     "$CH_SLUG" \
@@ -344,10 +351,10 @@ jobs:
             '{
               schemaVersion: 1,
               submission_id: $sub_id,
-              challenge_slug: ($ch_slug | select(length > 0)),
+              challenge_slug: (if ($ch_slug | length) > 0 then $ch_slug else null end),
               commit_sha: $commit,
               lean_version: $lean,
-              mathlib_version: ($mathlib | select(length > 0)),
+              mathlib_version: (if ($mathlib | length) > 0 then $mathlib else null end),
               target: "solution_target",
               status: $status,
               axioms: $axioms,
