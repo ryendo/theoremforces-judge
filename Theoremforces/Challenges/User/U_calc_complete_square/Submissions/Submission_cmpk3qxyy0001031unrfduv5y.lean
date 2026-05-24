@@ -24,3 +24,5 @@ def solution_target : ∀ (b c x : ℝ), x ^ 2 + b * x + c = (x + b / 2) ^ 2 + c
 #print axioms solution_target
 
 end Theoremforces.Challenges.User.U_calc_complete_square.Submissions.Submission_cmpk3qxyy0001031unrfduv5y
+
+-- backfill rerun 20260524T215557
