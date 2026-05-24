@@ -30,7 +30,16 @@ jobs:
   check:
     # GitHub-hosted runner only. Never switch to a self-hosted runner.
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # DoS defence: cap any single submission at 10 minutes wall-clock
+    # so a deliberately-heavy proof (recursive `simp`, runaway
+    # `aesop`, megabyte-sized term tree, etc.) can't burn through
+    # the operator's monthly GitHub Actions minutes. The previous
+    # 25-minute cap was sized for the initial Mathlib cache miss;
+    # post-cache runs finish in seconds, and the cache step is its
+    # own ~5-minute budget below. If a legitimate hard problem
+    # genuinely needs more, raise it per-challenge by adding a
+    # `timeout-minutes:` override on a copy of this workflow.
+    timeout-minutes: 10
 
     steps:
       - name: Checkout (with last 2 commits so we can diff)
@@ -106,7 +115,13 @@ jobs:
       - name: Build (targeted) + capture axiom output
         id: build
         run: |
-          set -e
+          # `set -o pipefail` is CRITICAL: without it, `lake build | tee`
+          # exits with tee's exit code (always 0) instead of lake's, so
+          # a `lake build` that fails (sorryAx warnings → exit 1, type
+          # errors, etc.) gets silently swallowed and downstream steps
+          # incorrectly think the build succeeded. Combined with `set -e`
+          # this makes the step fail iff lake fails.
+          set -eo pipefail
           mkdir -p .judge-out
           if [ -n "${{ steps.find.outputs.module }}" ]; then
             echo "lake build ${{ steps.find.outputs.module }}"
@@ -115,14 +130,49 @@ jobs:
             echo "lake build (full)"
             lake build 2>&1 | tee .judge-out/build.log
           fi
-          # Extract the `#print axioms solution_target` line. Lean
-          # prints either:
+          # Extract the `#print axioms solution_target` block. Lean
+          # prints one of:
+          #
           #   'solution_target' does not depend on any axioms
+          #
           #   'solution_target' depends on axioms: a, b, c
-          # We persist whatever line matched (or the empty string).
-          grep -E "(does not depend on any axioms|depends on axioms)" \
-               .judge-out/build.log > .judge-out/axioms.txt || true
-          echo "axioms_raw=$(cat .judge-out/axioms.txt | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+          #
+          #   'solution_target' depends on axioms: [propext,
+          #    sorryAx,
+          #    Classical.choice,
+          #    Quot.sound]
+          #
+          # Lean 4.13+ wraps lists of ≥4 axioms onto subsequent lines.
+          # The previous `grep` extractor only captured the FIRST line
+          # of the multi-line form, which left `sorryAx` (and anything
+          # else after the wrap) invisible to the enforce step below.
+          # An `awk` state machine captures the entire block — header
+          # line through closing `]` — so the multi-line case is now
+          # parsed identically to the single-line case.
+          awk '
+            /does not depend on any axioms/ {
+              print
+              in_block = 0
+              next
+            }
+            /depends on axioms/ {
+              print
+              if (index($0, "]") > 0) {
+                in_block = 0
+              } else {
+                in_block = 1
+              }
+              next
+            }
+            in_block {
+              print
+              if (index($0, "]") > 0) { in_block = 0 }
+            }
+          ' .judge-out/build.log > .judge-out/axioms.txt || true
+          # axioms_raw is used by downstream steps that need it on a
+          # single line. We join with a literal " | " separator so the
+          # multi-line structure stays inspectable in the log.
+          echo "axioms_raw=$(tr '\n' ' ' < .judge-out/axioms.txt)" >> "$GITHUB_OUTPUT"
 
       # ── Axiom-whitelist enforcement ──────────────────────────
       # The web app embeds `axiom_whitelist=<csv>` into the commit
@@ -135,22 +185,45 @@ jobs:
       # failed, with the violation list in `judgeLog`.
       - name: Enforce axiom whitelist
         run: |
-          set -e
+          set -eo pipefail
           MSG=$(git log -1 --pretty=%B)
           WHITELIST=$(echo "$MSG" | grep -oE 'axiom_whitelist=[A-Za-z0-9_.,\-]+' | head -1 | cut -d= -f2 || true)
           if [ -z "$WHITELIST" ]; then
             echo "::warning::No axiom_whitelist in commit message — skipping enforcement (legacy submission)."
             exit 0
           fi
-          AX_LINE=$(cat .judge-out/axioms.txt || true)
-          if echo "$AX_LINE" | grep -qi "does not depend on any axioms"; then
+          AX_BLOCK=$(cat .judge-out/axioms.txt || true)
+          if echo "$AX_BLOCK" | grep -qi "does not depend on any axioms"; then
             echo "✓ proof uses zero axioms — within whitelist by definition."
             exit 0
           fi
-          # Lean 4.13+ formats the list as `[a, b, c]`. Older Lean
-          # outputs `a, b, c` without brackets. `tr -d '[]'` handles
-          # both: it strips brackets if present, no-op if not.
-          USED=$(echo "$AX_LINE" | sed -E "s/.*depends on axioms[: ]+//" \
+          # HARD SECURITY GATE: sorryAx is Lean's witness for `sorry`
+          # / `admit` / any partial / failed-elaboration term. A user
+          # can hit it without typing the word `sorry` simply by
+          # leaving a tactic block incomplete (e.g. `by ring` on a
+          # non-equality goal). The static text filter cannot catch
+          # this case; only the `#print axioms` semantic report does.
+          # Hard-reject regardless of whitelist content, even if the
+          # operator accidentally included sorryAx in the whitelist.
+          if echo "$AX_BLOCK" | grep -qE '(^|[^A-Za-z0-9_.])(Lean\.)?sorryAx([^A-Za-z0-9_.]|$)'; then
+            echo "::error::sorryAx detected in #print axioms output."
+            echo "  This proof depends on Lean's sorryAx (the witness for"
+            echo "  \`sorry\` / \`admit\` / failed-tactic fallback). TheoremForces"
+            echo "  hard-rejects sorryAx regardless of the per-challenge"
+            echo "  whitelist."
+            echo "  axiom block:"
+            echo "$AX_BLOCK" | sed 's/^/    /'
+            exit 1
+          fi
+          # The axioms block is now reliably MULTI-LINE for wrapped
+          # lists (the build step uses awk to slurp from the header
+          # line through the closing `]`). The pipeline below tokenises
+          # the whole block per-line, so each axiom on its own
+          # continuation line ends up in $USED. Previously the build
+          # step extracted only the header line and the rest were
+          # silently dropped — a sorryAx after the wrap could pass
+          # whitelist enforcement undetected.
+          USED=$(echo "$AX_BLOCK" | sed -E "s/.*depends on axioms[: ]+//" \
                    | tr -d '[]' \
                    | tr ',' '\n' \
                    | sed -E 's/^[[:space:]]+|[[:space:]]+$//g' \
@@ -170,14 +243,141 @@ jobs:
           if [ -n "$VIOLATIONS" ]; then
             echo "::error::Axiom-whitelist violation — proof uses unwhitelisted axioms:$VIOLATIONS"
             echo "  whitelist: $(tr '\n' ',' < .judge-out/allowed.txt)"
+            echo "  parsed axioms (one per line):"
+            echo "$USED" | sed 's/^/    /'
             exit 1
           fi
           echo "✓ all used axioms are whitelisted."
 
-      # Surface the raw axiom line as an artifact so the web app's
-      # webhook handler can fetch + record it on the submission row
-      # without re-downloading the full build log.
-      - name: Upload axiom artifact
+      # ── Machine-readable axiom report (2026-05) ──────────────
+      # Emit `.judge-out/axioms-report.json` — a structured record
+      # the web app's webhook handler can fetch via the artifact
+      # API instead of scraping the GitHub Actions text log
+      # (which proved unreliable on workerd: log fetches sometimes
+      # returned empty bodies + bash-script comments matching the
+      # regex confused the parser).
+      #
+      # Schema (matches `lib/axiom-report.ts` on the server):
+      #
+      #   {
+      #     "schemaVersion":      1,
+      #     "submission_id":      string,   // from commit message
+      #     "challenge_slug":     string | null,
+      #     "commit_sha":         string,   // GITHUB_SHA, verified
+      #                                     //   server-side against
+      #                                     //   the recorded SHA
+      #     "lean_version":       string,   // from lean-toolchain
+      #     "mathlib_version":    string | null,
+      #     "target":             "solution_target",
+      #     "status":             "ok" | "parse_error" | "lean_error",
+      #     "axioms":             string[], // parsed names
+      #     "raw_axiom_output":   string,   // full multi-line text
+      #     "generated_at":       ISO 8601 string,
+      #     "workflow_run_id":    string    // GITHUB_RUN_ID
+      #   }
+      #
+      # status="ok"          → axioms parsed cleanly (zero axioms
+      #                          is the empty array, NOT parse_error)
+      # status="parse_error" → axiom block found but couldn't parse
+      #                          a clean list (server treats this
+      #                          as an infrastructure error, not a
+      #                          proof failure — the UI says so).
+      # status="lean_error"  → axiom block was absent entirely
+      #                          (lake failed before #print axioms
+      #                          fired). The workflow itself would
+      #                          have exited non-zero in that case
+      #                          so the webhook wouldn't try to
+      #                          accept; we emit the report anyway
+      #                          for completeness.
+      - name: Build axioms-report.json
+        if: always()
+        env:
+          GH_SHA: ${{ github.sha }}
+          GH_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -eo pipefail
+          mkdir -p .judge-out
+          # Pull submission_id + challenge_slug out of the commit
+          # message (the web app embeds them in a stable format).
+          MSG=$(git log -1 --pretty=%B)
+          SUB_ID=$(echo "$MSG" | grep -oE 'Submission [A-Za-z0-9_-]+' | head -1 | awk '{print $2}' || echo "")
+          CH_SLUG=$(echo "$MSG" | grep -oE 'for [a-z0-9][a-z0-9-]+' | head -1 | awk '{print $2}' || echo "")
+          LEAN_TC=$(cat lean-toolchain 2>/dev/null | tr -d '\n' || echo "")
+          MATHLIB_VER=$(jq -r '.packages[]? | select(.name=="mathlib") | (.rev // .version // "")' lake-manifest.json 2>/dev/null | head -1 || echo "")
+          AX_BLOCK=$(cat .judge-out/axioms.txt 2>/dev/null || echo "")
+          # Decide status + parse the axiom list.
+          STATUS="ok"
+          PARSED_JSON="[]"
+          if [ -z "$AX_BLOCK" ]; then
+            STATUS="lean_error"
+          elif echo "$AX_BLOCK" | grep -qi "does not depend on any axioms"; then
+            STATUS="ok"
+            PARSED_JSON="[]"
+          else
+            # Strip the header + brackets, split on commas/newlines,
+            # filter for valid Lean identifiers.
+            USED=$(echo "$AX_BLOCK" | sed -E "s/.*depends on axioms[: ]+//" \
+                     | tr -d '[]' \
+                     | tr ',' '\n' \
+                     | sed -E 's/^[[:space:]]+|[[:space:]]+$//g' \
+                     | grep -E "^[A-Za-z_][A-Za-z0-9_.]*$" || true)
+            if [ -z "$USED" ]; then
+              STATUS="parse_error"
+              PARSED_JSON="[]"
+            else
+              PARSED_JSON=$(echo "$USED" | jq -R . | jq -s .)
+            fi
+          fi
+          # Use jq to compose so quoting / escaping is safe even
+          # when the raw output contains newlines / quotes / unicode.
+          jq -n \
+            --arg sub_id      "$SUB_ID" \
+            --arg ch_slug     "$CH_SLUG" \
+            --arg commit      "$GH_SHA" \
+            --arg lean        "$LEAN_TC" \
+            --arg mathlib     "$MATHLIB_VER" \
+            --arg status      "$STATUS" \
+            --argjson axioms  "$PARSED_JSON" \
+            --arg raw         "$AX_BLOCK" \
+            --arg generated   "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg run_id      "$GH_RUN_ID" \
+            '{
+              schemaVersion: 1,
+              submission_id: $sub_id,
+              challenge_slug: ($ch_slug | select(length > 0)),
+              commit_sha: $commit,
+              lean_version: $lean,
+              mathlib_version: ($mathlib | select(length > 0)),
+              target: "solution_target",
+              status: $status,
+              axioms: $axioms,
+              raw_axiom_output: $raw,
+              generated_at: $generated,
+              workflow_run_id: $run_id
+             }' > .judge-out/axioms-report.json
+          echo "── axioms-report.json ──"
+          cat .judge-out/axioms-report.json
+
+      # Upload the structured report as a GitHub Actions artifact.
+      # IMPORTANT: compression-level=0 (STORE only, no deflate) so
+      # the webhook's minimal zip reader on workerd doesn't need
+      # to decompress — STORE is just the file's bytes appended
+      # after the local file header. Saves a ~80-line deflate
+      # implementation in the workerd-side fetcher.
+      - name: Upload axioms-report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: axiom-report
+          path: .judge-out/axioms-report.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      # Retain the legacy single-line `axioms` artifact too for
+      # one toolchain cycle — lets a webhook running pre-2026-05
+      # code still find SOMETHING if we have to roll back.
+      - name: Upload legacy axiom artifact (compat)
         if: always()
         uses: actions/upload-artifact@v4
         with:
