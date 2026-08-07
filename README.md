@@ -24,3 +24,13 @@ Adding a new challenge:
 
 The workflow filter (`Leanforces/Challenges/**/Submissions/Submission_*.lean`)
 ensures non-submission files don't trigger CI.
+
+## White paper
+
+The detailed TheoremForces white paper describes the trust model, judge and
+certificate architecture, threat model, governance, operating targets, and a
+12-month implementation roadmap.
+
+- [LaTeX source](docs/whitepaper/theoremforces-whitepaper.tex)
+- [Compiled PDF](output/pdf/theoremforces-whitepaper.pdf)
+- [Build instructions](docs/whitepaper/README.md)
