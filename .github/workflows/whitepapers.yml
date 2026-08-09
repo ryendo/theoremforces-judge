@@ -56,9 +56,14 @@ jobs:
             rebuilt=${pair#*:}
             test "$(pdfinfo "$committed" | awk '/^Pages:/ { print $2 }')" = \
                  "$(pdfinfo "$rebuilt" | awk '/^Pages:/ { print $2 }')"
-            pdftotext -layout "$committed" "$committed.txt"
-            pdftotext -layout "$rebuilt" "$rebuilt.txt"
-            cmp "$committed.txt" "$rebuilt.txt"
+            # TeX Live versions may wrap identical text differently. Compare
+            # the complete extracted content after removing layout-only ASCII
+            # whitespace, while the page-count check above catches pagination
+            # drift.
+            key=$(basename "$committed" .pdf)
+            pdftotext "$committed" - | LC_ALL=C tr -d '[:space:]' > "$snapshot/$key-committed.txt"
+            pdftotext "$rebuilt" - | LC_ALL=C tr -d '[:space:]' > "$snapshot/$key-rebuilt.txt"
+            cmp "$snapshot/$key-committed.txt" "$snapshot/$key-rebuilt.txt"
           done
 
       - name: Validate both audited v0.3 artifacts
