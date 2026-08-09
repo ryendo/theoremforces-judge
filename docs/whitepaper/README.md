@@ -17,7 +17,7 @@ Requirements:
 The final artifact is written to:
 
 ```text
-output/pdf/theoremforces-whitepaper.pdf
+output/pdf/theoremforces-whitepaper-ver-0.3.pdf
 ```
 
 Temporary LaTeX files are written under `tmp/pdfs/`.

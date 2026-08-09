@@ -1,9 +1,9 @@
-TEX := theoremforces-whitepaper.tex
-ROOT := ../..
-BUILD_DIR := $(ROOT)/tmp/pdfs/theoremforces-whitepaper
+TEX := theoremforces-l1-whitepaper.tex
+ROOT := ../../..
+BUILD_DIR := $(ROOT)/tmp/pdfs/theoremforces-l1-whitepaper
 OUTPUT_DIR := $(ROOT)/output/pdf
-SOURCE_PDF := theoremforces-whitepaper.pdf
-PDF := theoremforces-whitepaper-ver-0.3.pdf
+SOURCE_PDF := theoremforces-l1-whitepaper.pdf
+PDF := theoremforces-l1-whitepaper-ver-0.3.pdf
 
 .PHONY: all clean
 

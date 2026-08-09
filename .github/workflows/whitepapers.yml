@@ -1,0 +1,55 @@
+name: Whitepaper artifact integrity
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "docs/whitepaper/**"
+      - "output/pdf/*whitepaper-ver-0.3.pdf"
+      - ".github/workflows/whitepapers.yml"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "docs/whitepaper/**"
+      - "output/pdf/*whitepaper-ver-0.3.pdf"
+      - ".github/workflows/whitepapers.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install structural PDF tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends poppler-utils
+
+      - name: Validate both audited v0.3 artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=(
+            output/pdf/theoremforces-whitepaper-ver-0.3.pdf
+            output/pdf/theoremforces-l1-whitepaper-ver-0.3.pdf
+          )
+          for pdf in "${expected[@]}"; do
+            test -s "$pdf"
+            pages=$(pdfinfo "$pdf" | awk '/^Pages:/ { print $2 }')
+            test "${pages:-0}" -ge 2
+            extracted=$(mktemp)
+            pdftotext "$pdf" "$extracted"
+            test -s "$extracted"
+            grep -q "Version 0.3.0" "$extracted"
+            if pdffonts "$pdf" | awk 'NR > 2 && $(NF-2) != "yes" { bad=1 } END { exit bad ? 0 : 1 }'; then
+              echo "Unembedded font detected in $pdf" >&2
+              exit 1
+            fi
+            rm -f "$extracted"
+          done

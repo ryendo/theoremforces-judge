@@ -52,8 +52,8 @@
 \pagestyle{fancy}
 \fancyhf{}
 \fancyhead[L]{\sffamily\small\color{TFMuted}TheoremForces White Paper}
-\fancyhead[R]{\sffamily\small\color{TFMuted}Version 0.1.0 - 2026-08-07}
-\fancyfoot[L]{\sffamily\footnotesize\color{TFMuted}Public beta design paper}
+\fancyhead[R]{\sffamily\small\color{TFMuted}Version 0.3.0 - 2026-08-09}
+\fancyfoot[L]{\sffamily\footnotesize\color{TFMuted}Audited design specification - L1 issuance paused}
 \fancyfoot[R]{\sffamily\footnotesize\color{TFMuted}\thepage\ / \pageref{LastPage}}
 \renewcommand{\headrulewidth}{0.4pt}
 \renewcommand{\headrule}{\hbox to\headwidth{\color{TFLine}\leaders\hrule height \headrulewidth\hfill}}
@@ -80,7 +80,9 @@
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
 \newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
 \newcommand{\term}[1]{\textbf{\color{TFNavy}#1}}
+\newcommand{\code}[1]{\texttt{#1}}
 \newcommand{\status}[2]{\textcolor{#1}{\textbf{#2}}}
+\newcommand{\glossref}[2]{\hyperlink{glossary:#1}{#2}}
 
 \newtcolorbox{principlebox}[1]{
   enhanced,breakable,
@@ -157,15 +159,21 @@ A Public Certificate Layer for Reproducible Lean Proofs}\par
 \begin{tcolorbox}[
   colback=white,colframe=TFLine,boxrule=0.6pt,arc=2mm,
   left=5mm,right=5mm,top=4mm,bottom=4mm]
-\textbf{Status}\quad Public beta design paper\hfill
-\textbf{Version}\quad 0.1.0\hfill
-\textbf{Date}\quad 2026-08-07
+\textbf{Status}\quad Audited design specification\hfill
+\textbf{Version}\quad 0.3.0\hfill
+\textbf{Date}\quad 2026-08-09
 
 \medskip
-本書は、TheoremForces の目的、trust model、certificate 仕様、judge architecture、
-semantic provenance、security、governance、および 2026-2027 年の実行計画を示す。
-実装済み機能と目標状態を明確に区別し、Lean acceptance を数学的 endorsement と
-混同しないことを設計の中心に置く。
+本書は、TheoremForces の目的、trust model（信頼モデル）、certificate 仕様（証明書仕様）、
+judge architecture（判定基盤）、\glossref{semantic-provenance}{semantic provenance（意味論的来歴）}、
+security（安全性）、governance（運営統治）、および 2026-2027 年の実行計画を示す。
+実装済み機能と目標状態を明確に区別し、\glossref{accepted}{Lean acceptance（Lean による機械的受理）}を
+\glossref{endorsement}{数学的 endorsement（数学的承認）}と混同しないことを設計の中心に置く。
+
+\medskip
+\textbf{0.3.0 security revision:} adversarial audit で発見した certificate hash の自己参照、
+append-only log の不備、runner 単独信頼、artifact 再生成、未確定 canonicalization、retention と
+governance の矛盾を解消する normative correction を追加した。Gate C 完了までは public L1 issuance を停止する。
 \end{tcolorbox}
 
 \vfill
@@ -215,16 +223,202 @@ paid pilots only after reliability and operational thresholds are met.
 
 \begin{decisionbox}{文書の読み方}
 \begin{itemize}
-  \item \term{Current}: 2026-08-07 時点で公開 UI、公開 API、公開 repository から確認できる状態。
+  \item \term{Current}: 2026-08-09 時点で公開 UI、公開 API、公開 repository から確認できる状態。
   \item \term{Target}: 本書が提案する certificate schema v2 と production architecture。
   \item \term{Gate}: 次の phase へ進むための measurable exit condition。
-  \item 本書は private web application と isolated judge source code の完全な security audit ではない。
+  \item 本版は公開文書と公開実装に対する adversarial audit を反映するが、継続的な外部 security review の代替ではない。
 \end{itemize}
 \end{decisionbox}
 
 \tableofcontents
 \clearpage
 \pagenumbering{arabic}
+
+\section{Version 0.3 normative security correction}
+
+\begin{warningbox}{Production status: L1 issuance is disabled}
+Version 0.2 の certificate hash、transparency receipt、runner trust boundary には、仕様どおりに安全な
+実装を作れない production blocker があった。本節は本書の他の節と衝突する場合に優先する normative
+correction である。公開 site の閲覧機能と historical record は運用できるが、Gate 0--C が完了するまで
+新規 record を \term{L1 accepted}、\term{verified}、\term{fully reproducible}、または
+\term{append-only witnessed} として発行してはならない。Historical v1 record は
+\code{legacy-incomplete} と表示し、L1 v2 と同等に数えない。
+\end{warningbox}
+
+\subsection{Normative scope and conformance}
+
+本節、L1 companion specification の normative requirement catalog、Gate 0--C、および repository に置く
+versioned JSON Schema / golden vectors / adversarial fixtures を normative とする。実装は requirement ID ごとに
+automated conformance test と evidence URI を持たなければならない。未解決の semantic decision、test evidence の欠落、
+または checker divergence が一件でもあれば issuance flag は false のままとする。
+
+\begin{tabularx}{0.96\linewidth}{@{}L{28mm}Y@{}}
+\toprule
+\textbf{Requirement} & \textbf{Normative rule} \\
+\midrule
+TF-CONF-001 & 各 MUST に stable ID、owner、test、release evidence を対応させ、unknown / skipped test を pass と数えない。 \\
+TF-CLAIM-001 & Exact blob、external log receipt、full-chain verifier が揃うまで再現性・追記性を断定しない。UI/API/CLI は assurance layer と不足 evidence を別々に示す。 \\
+TF-OPS-001 & False acceptance、artifact mismatch、checker divergence、log fork、signing key incident の一件で 5 分以内に automatic mint pause する。 \\
+TF-GOV-001 & Trust-critical release は独立した二人の approver、protected main、signed release、rollback plan を要求する。第二 approver がいなければ mint を停止する。 \\
+\bottomrule
+\end{tabularx}
+
+\subsection{Non-self-referential certificate objects}
+
+公開 certificate は単一 JSON object ではなく、次の三つの独立 object からなる。Receipt と signature を core の
+hash 対象へ戻してはならない。
+
+\begin{enumerate}
+  \item \term{CertificateCore}: statement、exact artifacts、logical environment、target、axiom / certified
+        dependencies、resource outcome、policy checkpoint を含む immutable payload。
+  \item \term{IssuanceAttestation}: core digest、issuer、verifier quorum、job expectation、result attestation、
+        issuance policy を拘束する signed envelope。Signatures 自身は signed payload の外側に置く。
+  \item \term{LogReceipt}: core digest と issuance digest を leaf にした transparency inclusion / consistency
+        evidence。後から witness を追加しても core digest と issuance digest は変わらない。
+\end{enumerate}
+
+RFC 8785 JCS と I-JSON 制約を使用し、duplicate key、lone surrogate、non-finite number、negative zero、
+schema が許可しない null / unknown field を拒否する。文字列を NFC 等へ暗黙変換してはならない。
+
+\begin{align}
+d_C &= \operatorname{SHA256}(\operatorname{UTF8}(\mathrm{TF\!\! -\! CERT\!\! -\! CORE\!\! -\! V2})\parallel 00_{16}\parallel
+      \operatorname{JCS}(\operatorname{CertificateCore})),\\
+d_I &= \operatorname{SHA256}(\operatorname{UTF8}(\mathrm{TF\!\! -\! ISSUANCE\!\! -\! V1})\parallel 00_{16}\parallel
+      \operatorname{JCS}(\operatorname{IssuancePayload})),\\
+m_I &= \operatorname{UTF8}(\mathrm{theoremforces.l1.signature.v2})\parallel 00_{16}\parallel
+      \operatorname{JCS}(\operatorname{IssuancePayload}).
+\end{align}
+
+Digest 表記は lowercase \code{sha256:} と 64 lowercase hexadecimal、署名は Ed25519 / RFC 8032、
+base64url without padding とする。Issuer、builder、verifier、log は別 key ID と validity interval を使い、
+発行時 key checkpoint、rotation overlap、revocation reason、compromise handling を公開する
+\cite{rfc8785,rfc8032}。
+
+\begin{principlebox}{TF-CERT-001 - cycle-free identity}
+LogReceipt の追加・更新は $d_C$ と $d_I$ を変えてはならない。Ledger module 名は final certificate hash から
+導出せず、発行前に確定する opaque artifact ID の 128 bit 以上の domain-separated digest から導出する。
+Module source は未確定の certificate hash を埋め込まない。Core の任意の 1 byte の変更は $d_C$ を変える。
+少なくとも二言語の golden vector が一致しなければ release しない。
+\end{principlebox}
+
+\subsection{Acceptance, exact artifacts, and independent verification}
+
+Web / API は dispatch 前に immutable \term{JobExpectation} を保存する。最低でも attempt ID、job nonce、
+challenge artifact digest、raw upload digest、entrypoint digest、canonical manifest digest、bundle root、generated source
+digest、resolved dependency manifest digest、logical environment digest、policy digest、target identity を含む。
+Runner は同じ値、run ID、attempt number、pre/post input root、resource outcome を署名した
+\term{ResultAttestation} として返す。別 attempt の callback、重複 nonce、late callback、値の相違を reject する。
+
+受理 state machine は
+\code{received -> dispatched -> result-attested -> independently-verified -> blobs-durable -> log-integrated -> published}
+の単調遷移とする。Public certificate、accepted status、reputation credit は最後の遷移を一度だけ atomic に commit
+した後にのみ可視化する。Object store、database、queue、log を架空の単一 transaction と見なさず、transactional
+outbox と idempotency key を使う。Retry は新しい attempt であり、元 attempt を上書きしない。
+
+\begin{principlebox}{TF-ACC-001 - conjunctive, fail-closed acceptance}
+\code{published} は exact artifact match、immutable expectation match、one target、trusted challenge binding、
+Comparator equality、sandboxed builder completion、sandbox 外の proof export validation、Lean checker PASS、
+independent checker PASS、structured transitive axiom policy PASS、dependency checkpoint PASS、resource policy PASS、
+durable blob availability、issuer signature、log integration の conjunction だけで成立する。Reject、crash、timeout、
+unsupported、parse error、missing evidence は accepted ではなく rejected または indeterminate である。
+\end{principlebox}
+
+User-controlled Lean source、macro、command、tactic、plugin、\code{.olean} は hostile input とする。通常の Lean process
+成功は builder evidence にすぎない。\code{debug.skipKernelTC} や unchecked declaration injection を防ぐため、
+trusted Challenge と Comparator で statement を拘束し、exported proof を別 trust domain の Lean checker と
+独立実装 checker で再検査する。Builder callback 単独で issuer signer を起動してはならない
+\cite{leanvalidate,leancomparator}。
+
+\subsection{Artifact and environment identity}
+
+\code{artifact.upload\_raw\_sha256}、\code{artifact.entrypoint\_raw\_sha256}、\\
+\code{artifact.manifest\_sha256}、\code{artifact.bundle\_root\_sha256} は異なる意味を持つ必須 field とする。Bundle root は
+\code{"theoremforces.artifact.v1" || 0x00 || JCS(canonicalManifest)} の SHA-256 とする。Manifest は path 昇順、
+regular-file raw bytes、size、fixed mode を commit する。Absolute path、empty / dot / dot-dot segment、backslash、
+NUL、case-fold collision、symlink、hardlink、device、FIFO、socket を reject する。Archive は compressed bytes を先に
+hash / size 検査し、entry 数、expanded size、depth、ratio を制限する。
+
+Transport bytes、decoded UTF-8 bytes、generated source bytes は別 blob として insert-only CAS に保存する。
+Generator executable / image digest と exact source map を記録し、後日 template から見かけを再生成して judged blob の
+代替にしてはならない。Source identity のため Unicode を正規化しない一方、UI は bidi control と default-ignorable を
+可視化し、escaped byte view と confusable warning を提供する。
+
+Logical environment は Lean / Lake / Mathlib source commit、package source tree / submodule、manifest、import roots、
+Lean checker、Comparator、exporter、independent checker、generator、verifier の binary digest、command / option、
+OCI platform / config / rootfs digest、SBOM、signed build provenance を含む。Moving tag、network resolution、
+unmanifested file、shared mutable cache を禁止する。Exact pin は安全性の証拠ではないため、known-unsound epoch を止める
+security allowlist / blocklist を別に運用する。
+
+\subsection{Axioms and certificate dependencies}
+
+Human-oriented \code{\#print axioms} text の regex parse は acceptance authority にしない。Proof export から
+primitive assumption と actual certified constant の transitive closure を machine-readable に二つの checker で
+再計算する。Primitive baseline は exact declaration identity、kind、type digest、origin module digest で
+\code{propext}、\code{Classical.choice}、\code{Quot.sound} のみを policy version に明記する。
+\code{sorryAx}、compiler trust、native computation 由来 assumption、custom / unknown axiom は reject する。
+
+Certificate-backed dependency は無条件の kernel proof ではない。通常 build で stub cache を使う場合も、issuer は
+全 upstream proof export を topological order で再検査する。UI は primitive assumptions と certified assumptions を
+同じ trust panel で列挙し、\term{stub rebuild success} と \term{full-chain rebuild success} を別状態にする。
+一つでも certified dependency があれば \term{axiom-free} または \term{unconditional proof} と表示しない。
+
+\subsection{Append-only log and registry semantics}
+
+Transparency tree は RFC 9162 型の domain separationを使用する。\term{LogLeafV2} は
+\code{schema = theoremforces.l1-log-leaf/2}、\code{core\_sha256 = d\_C}、
+\code{issuance\_sha256 = d\_I} の三 field だけを持つ object とする。Leaf input は
+$L=\operatorname{JCS}(\mathrm{LogLeafV2})$、leaf は
+\code{SHA256(0x00 || L)}、internal node は
+\code{SHA256(0x01 || left || right)} とし、odd leaf を複製しない。Signed checkpoint は log ID、tree size、root、
+timestamp、algorithm、key ID、maximum merge delay を含む。各公開 checkpoint は前 checkpoint からの consistency proof、
+有効な log signature、少なくとも二つの独立 witness / mirror receipt を持つ。Inclusion proof だけ、daily independent root、
+mutable Git tag、同一 D1 row は append-only の証拠ではない。MMD 内に統合される前は \code{pending-log} であり、
+published certificate と数えない。
+
+Registry は次の二 object に分ける。
+
+\begin{itemize}
+  \item \term{RegistryEventLog}: issue、status、invalidate、retract、supersede、taint を順序付きで追記する。
+  \item \term{RegistryStateCheckpoint}: event prefix から決定的に導出する versioned authenticated map。
+\end{itemize}
+
+\code{validAtIssue(c,R\_issue)} と \code{currentTrustState(c,R\_now)} を分離する。後日の invalidation は過去の core を
+変更せず、全 downstream へ deterministic taint event を追加する。Issuance が参照する checkpoint は issuance より前で、
+forward reference と cycle を禁止する。Accepted certificate、artifact、attempt / failure、event、checkpoint、receipt は
+certificate lifetime 中削除または空文字化しない。取得不能時は \code{replay-unavailable} event を追記する。
+
+\subsection{Sandbox, privacy, abuse, and operations}
+
+Hostile build は non-root、no secrets、read-only root / import store、fresh ephemeral workspace、default-deny egress、
+zero capabilities、seccomp、PID / mount / user namespace または disposable microVM で実行する。Docker / host socket、
+SSH agent、cloud metadata、credential path を公開しない。CPU、wall time、RSS、PID、open files、disk / inode、output、
+network、exit code、signal、OOM、timeout、truncation の limit と actual value を signed evidence に含める。Canary secret、
+network、host file、limit overrun の adversarial corpus を image ごとに通す。
+
+Public mint 前に immutable-publication confirmation、secret / PII scan、quarantine、copyright / illegal content report、
+takedown tombstone、appeal、legal hold を実装する。Private artifact は unsalted digest を public log に置かず、tenant-scoped
+encryption、per-object key、cryptographic erasure、dedup / reference count 分離を使う。Stored XSS、log injection、SSRF、
+path traversal、huge dependency DAG、review Sybil / collusion、reputation farming、plagiarism、doxxing を threat model と
+test corpus に含め、DAG depth / node cap と moderation audit event を要求する。
+
+\subsection{Release gates and SLO}
+
+\begin{enumerate}
+  \item \term{Gate 0 - Spec freeze}: normative schema、JCS / signature / Merkle golden vectors、failure enum、checker
+        quorum、key policy、全 requirement test mapping を確定し、semantic open question を 0 件にする。
+  \item \term{Gate A - Adversarial CI}: malicious Lean meta、kernel-skip、statement substitution、custom / native axiom、
+        stale cache、duplicate JSON、Unicode / path collision、archive bomb、callback replay、log fork を全件拒否する。
+  \item \term{Gate B - Independent replay}: clean host で対象 sample の 100\% を再構成し、Comparator、Lean checker、
+        independent checker、type / value / export / axiom digest が一致する。
+  \item \term{Gate C - Production readiness}: 30 日間、必須 evidence 100\%、sampled replay 100\%、false acceptance 0、
+        mint kill-switch、key revocation、restore、log fork、downstream taint drill を完了する。
+\end{enumerate}
+
+初期 SLO は minted integrity mismatch 0 件、log integration 99.9\% within 10 minutes、certificate / artifact read
+availability 99.9\% monthly、trust-critical RPO 0、rebuildable analytics RPO 24 hours とする。Critical incident は internal
+page 5 分以内、public status 60 分以内、affected user initial notice 24 時間以内、monthly restore drill とする。
+各 SLI は denominator、rolling window、exclusion、measurement source を公開する。Incident が起きなかった日数だけを
+readiness evidence にしない。
 
 \section{問題設定}
 
@@ -288,8 +482,9 @@ byte-for-byte source と bundle である。表示も保存 artifact を source 
 \end{principlebox}
 
 \begin{principlebox}{P3. Pinned is not latest}
-Active pinned environment と upstream stable release は別の概念である。historical certificate は元の
-epoch で再現し、current compatibility は migration campaign の結果として別記する。
+\glossref{active-pinned-environment}{Active pinned environment（現在の固定検証環境）}と
+\glossref{upstream-stable-release}{upstream stable release（上流の最新安定版）}は別の概念である。
+historical certificate は元の epoch で再現し、current compatibility は migration campaign の結果として別記する。
 \end{principlebox}
 
 \begin{principlebox}{P4. Fail closed at trust boundaries}
@@ -315,20 +510,26 @@ North Star は conjecture 総数や AI-generated submission 数ではない。�
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}[
-  layer/.style={rounded corners=2mm,text width=137mm,minimum width=145mm,minimum height=12mm,draw=TFLine,thick,align=left,font=\sffamily\small},
-  label/.style={font=\sffamily\bfseries\small,text=white,minimum width=29mm,minimum height=8mm,rounded corners=1.5mm},
+  layer/.style={rounded corners=2mm,minimum width=145mm,minimum height=13mm,draw=TFLine,thick,fill=TFPaper},
+  label/.style={font=\sffamily\bfseries\small,text=white,minimum width=26mm,minimum height=9mm,rounded corners=1.5mm,anchor=west},
+  description/.style={font=\sffamily\small,text width=104mm,align=left,anchor=west,inner sep=0pt},
   node distance=3mm
 ]
-\node[layer,fill=TFPaper] (l1) {\hspace{33mm}\textbf{Kernel acceptance}\quad exact theorem term が recorded environment で type-check した};
-\node[label,fill=TFBlue] at ([xshift=17mm]l1.west) {L1};
-\node[layer,fill=TFPaper,below=of l1] (l2) {\hspace{33mm}\textbf{Artifact provenance}\quad source、bundle、environment、axiom、dependency の hash が完全};
-\node[label,fill=TFCyan] at ([xshift=17mm]l2.west) {L2};
-\node[layer,fill=TFPaper,below=of l2] (l3) {\hspace{33mm}\textbf{Reverification}\quad active environment または指定 migration epoch でも再検査済み};
-\node[label,fill=TFGreen] at ([xshift=17mm]l3.west) {L3};
-\node[layer,fill=TFPaper,below=of l3] (l4) {\hspace{33mm}\textbf{Intent review}\quad formal statement と informal intent の alignment を複数人が確認};
-\node[label,fill=TFGold] at ([xshift=17mm]l4.west) {L4};
-\node[layer,fill=TFPaper,below=of l4] (l5) {\hspace{33mm}\textbf{Curation}\quad 教育・研究・benchmark 上の価値を curator が選定};
-\node[label,fill=TFNavy] at ([xshift=17mm]l5.west) {L5};
+\node[layer] (l1) {};
+\node[label,fill=TFBlue] at ([xshift=2mm]l1.west) {L1};
+\node[description] at ([xshift=36mm]l1.west) {\textbf{Kernel acceptance}\quad recorded environment で exact theorem term が type-check した};
+\node[layer,below=of l1] (l2) {};
+\node[label,fill=TFCyan] at ([xshift=2mm]l2.west) {L2};
+\node[description] at ([xshift=36mm]l2.west) {\textbf{Artifact provenance}\quad source、bundle、environment、axiom、dependency の hash が完全};
+\node[layer,below=of l2] (l3) {};
+\node[label,fill=TFGreen] at ([xshift=2mm]l3.west) {L3};
+\node[description] at ([xshift=36mm]l3.west) {\textbf{Reverification}\quad active environment または指定 migration epoch で再検査済み};
+\node[layer,below=of l3] (l4) {};
+\node[label,fill=TFGold] at ([xshift=2mm]l4.west) {L4};
+\node[description] at ([xshift=36mm]l4.west) {\textbf{Intent review}\quad formal statement と informal intent の alignment を複数人が確認};
+\node[layer,below=of l4] (l5) {};
+\node[label,fill=TFNavy] at ([xshift=2mm]l5.west) {L5};
+\node[description] at ([xshift=36mm]l5.west) {\textbf{Curation}\quad 教育・研究・benchmark 上の価値を curator が選定};
 \end{tikzpicture}
 \caption{一つの badge に畳み込まない assurance stack}
 \end{figure}
@@ -348,31 +549,43 @@ L1 は Lean の kernel による derivability の確認である。L2 は、そ�
 
 \subsection{Acceptance predicate}
 
-Formal statement を $s$、proof body を $p$、direct certificate imports を $I$、generator version を $v$、
-environment epoch を $E$、axiom whitelist を $W$ とする。生成 source と judge bundle を
+以下は本節 0.3 の object model を要約する補助式である。Formal statement を $s$、proof body を $p$、direct certificate imports を $I$、generator version を $v$、
+logical environment epoch を $E$、primitive axiom whitelist を $W$、certificate registry の
+checkpoint root を $R$ とする。生成 source と judge bundle を
 
 \begin{align}
   A &= G_v(s,p,I,E),\\
   B &= \operatorname{Bundle}(A,I,E)
 \end{align}
 
-と定義する。$J_E(B)$ を isolated judge の結果、$X_E(A)$ を \texttt{\#print axioms} から得た
-transitive axiom set、$D(B)$ を bundle から計算した direct dependency set、$H$ を SHA-256 とする。
+と定義する。$J_E(B)$ を isolated judge の結果、$P_E(A)$ を primitive axiom set、$C_E(A)$ を
+certificate-backed assumptions の transitive set、$D(B)$ を bundle から計算した direct dependency set、
+$N(A)$ を environment delta 上の user target declaration 数、$H$ を SHA-256 とする。Dispatch 前に ledger が
+commit した expected digests を $h_A^\ast,h_B^\ast$、trusted challenge との Comparator 判定を $Q(A)$、
+proof export に対する Lean checker と independent checker の quorum を $V(A)$ とする。
+各 $c\in C_E(A)$ について、\(\operatorname{ValidCert}(c,E,R)\) は active certificate、statement type hash、
+同一 logical environment digest、および upstream dependency chain を registry checkpoint $R$ に対して検証する。
 新規 submission の Accepted 条件は、概念的には次である。
 
 \begin{equation}
 \begin{split}
 \operatorname{Accept}(s,p,I,E) \iff {} & J_E(B)=\textsf{success} \\
-& \land X_E(A)\subseteq W \\
-& \land \texttt{sorryAx}\notin X_E(A) \\
+& \land N(A)=1 \\
+& \land P_E(A)\subseteq W
+  \land \texttt{sorryAx}\notin P_E(A) \\
+& \land \forall c\in C_E(A),\ \operatorname{ValidCert}(c,E,R) \\
+& \land \operatorname{Acyclic}(C_E(A)) \\
 & \land D(B)=I \\
-& \land H(A)=h_A \land H(B)=h_B \\
+& \land H(A)=h_A^\ast \land H(B)=h_B^\ast \\
+& \land Q(A)=\textsf{pass} \land V(A)=\textsf{pass} \\
 & \land \operatorname{LimitsEnforced}(J_E).
 \end{split}
 \end{equation}
 
-重要なのは、単なる process exit code 0 ではない点である。実行対象、axiom report、dependency、
-resource policy、recorded hash が同一 transaction / attestation chain に結び付いて初めて L1 と L2 が成立する。
+重要なのは、単なる process exit code 0 ではない点である。単一の実行対象、primitive axiom report、
+certificate dependency、
+resource policy、dispatch 前 expectation、independent checker evidence が同一 attestation chain に結び付き、
+artifact durability と log integration を含む publish transition が一度だけ成立して初めて L1 と L2 が成立する。
 
 \subsection{Axiom policy}
 
@@ -386,10 +599,26 @@ TheoremForces の policy は次を満たすべきである。
 \begin{enumerate}
   \item \texttt{sorryAx} は whitelist に関係なく hard reject。
   \item parse failure / missing report は success ではなく infrastructure failure。
-  \item standard axiom、custom axiom、imported certificate constant を UI 上で別 category にする。
-  \item certificate dependencies は axiom list の文字列推測ではなく、server-resolved bundle manifest から確定する。
+  \item primitive standard axiom、custom axiom、certificate-backed assumption を UI と schema で別 category にする。
+  \item certificate dependencies は axiom 名の文字列推測や namespace の一致だけで許可せず、server-resolved bundle
+        manifest、certificate hash、statement type hash、environment digest から確定する。
   \item parser version と raw output hash を certificate に含める。
 \end{enumerate}
+
+一度 accepted された命題を downstream proof の高速な elaboration cache として使う場合、server は
+\texttt{TheoremForces.Certified.c\_<certificate-hash>} のような opaque / axiom stub を生成してよい。
+ただし、その stub は primitive allowlist $W$ に追加しない。$W$ は論理原理を管理する安定した policy、
+certificate registry は既検証 theorem を管理する追記型の object graph であり、trust source が異なるからである。
+user が同じ namespace の axiom を自作しても registry record がなければ拒否する。Stub build は
+certificate-backed assumptions に相対的な成功であり、issuer は署名前に upstream proof export を full-chain replay
+しなければならない。
+
+\begin{decisionbox}{二層 versioning で「公理リストの頻繁な更新」を避ける}
+Lean、Mathlib、package manifest、primitive axiom policy、wrapper rule を immutable な logical epoch $E$ として固定する。
+accepted certificate は同じ $E$ の append-only registry に追加し、checkpoint root $R_0,R_1,\ldots$ だけを更新する。
+したがって theorem の追加ごとに $W$ や $E$ の version を上げない。import は certificate hash を指し、別 epoch では
+reverification 後に新しい migrated certificate を発行する。失効時は依存 DAG の downstream を taint する。
+\end{decisionbox}
 
 \section{System architecture}
 
@@ -451,11 +680,43 @@ Request は authenticated identity、conjecture id、proof body、AI disclosure�
 client idempotency key を含む。server は quota と content-size cap を先に適用し、static filter の結果を
 記録する。static filter は defense-in-depth であり、Lean soundness の完全な証明とは扱わない。
 
+\subsubsection{Single-target L1 and batch facade}
+
+L1 の原子単位は \term{one attempt = one theorem} とする。user payload に別の top-level
+\texttt{theorem} / \texttt{lemma} があれば、使われていなくても受理しない。proof 内の \texttt{have}、\texttt{let}、
+local helper は単一 target の proof term に閉じるため許可できる。共有したい補助定理は、先に別の L1 attempt として
+certificate 化し、その certificate を依存として参照する。
+
+UI や API は複数定理を一括入力できてもよいが、それは L1 の外側にある batch orchestrator が $N$ 個の独立 job に
+fan-out している facade である。batch 自体を atomic に accepted とせず、各 theorem の certificate と結果を集約する
+collection manifest を返す。これにより target ambiguity、all-or-nothing failure、resource accounting の混同を避ける。
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  b/.style={draw=TFLine,rounded corners=1.5mm,fill=white,minimum width=34mm,minimum height=14mm,
+             align=center,font=\sffamily\small},
+  a/.style={-{Latex[length=2.2mm]},draw=TFBlue,thick},
+  node distance=7mm
+]
+\node[b] (ui) {multi-theorem\\UI / API};
+\node[b,right=of ui] (batch) {batch orchestrator\\outside L1};
+\node[b,right=of batch] (jobs) {$N$ independent\\single-target jobs};
+\node[b,right=of jobs] (out) {$N$ certificates\\+ collection manifest};
+\draw[a] (ui) -- (batch);
+\draw[a] (batch) -- (jobs);
+\draw[a] (jobs) -- (out);
+\end{tikzpicture}
+\caption{複数定理 UX と単一 target L1 の境界}
+\end{figure}
+\FloatBarrier
+
 \subsubsection{Deterministic generation}
 
 Generator は statement、proof body、server-resolved imports、namespace、type-checking trailer、axiom command を
-順序を固定して出力する。生成 source は直ちに hash し、template version とともに immutable artifact store
-へ保存する。後日の UI は source を再生成せず、この blob を表示する。
+順序を固定して出力する。user payload の top-level target は一つに限定し、wrapper 自身が作る declaration と区別して
+count する。生成 source は直ちに hash し、template version とともに immutable artifact store へ保存する。
+後日の UI は source を再生成せず、この blob を表示する。
 
 \begin{lstlisting}[caption={生成 artifact の概念例}]
 -- generator: tf-wrapper-v2
@@ -463,14 +724,43 @@ Generator は statement、proof body、server-resolved imports、namespace、typ
 -- submission: <id>
 
 import Mathlib
-import Theoremforces.Ledger.Cert_<dependency>
+import TheoremForces.Certified.Dep_<certificate_hash>
 
-namespace Theoremforces.Conjectures.<NS>.Submissions.<ID>
-<proof body bytes, unchanged>
-def solution_target : <target type> := <answer name>
+namespace TheoremForces.Conjectures.<NS>.Submissions.<ID>
+-- Exactly one user target declaration is generated.
+theorem solution_target : <target type> := by
+  <proof body bytes, unchanged>
 #print axioms solution_target
-end Theoremforces.Conjectures.<NS>.Submissions.<ID>
+end TheoremForces.Conjectures.<NS>.Submissions.<ID>
 \end{lstlisting}
+
+\subsubsection{Certificate-backed import registry}
+
+accepted theorem の proof artifact は保存し続ける一方、通常の downstream build では毎回その proof body を再生せず、
+certificate に拘束された opaque constant を使えるようにする。import resolver は次をすべて満たす stub だけを bundle に入れる。
+
+\begin{enumerate}
+  \item certificate が発行時 checkpoint で valid で、現在 status と taint が別に提示され、canonical core、issuance signature、transparency evidence が有効である。
+  \item stub の exact type hash が certificate の statement type hash と一致する。
+  \item importing job と dependency の \texttt{logical\_environment\_digest} が一致する。
+  \item dependency graph が acyclic で、全 upstream certificate も同じ規則を満たす。
+\end{enumerate}
+
+\begin{tabularx}{0.96\linewidth}{L{43mm}YY}
+\toprule
+\textbf{Versioned object} & \textbf{Change cadence} & \textbf{意味} \\
+\midrule
+Logical epoch $E$ & rare, reviewed migration & Lean / Mathlib / packages / wrapper / primitive policy \\
+Primitive policy $W$ & rare, governance change & kernel-level assumptions の allow / deny \\
+Registry event prefix $R_n$ & frequent, append-only & issue / status / taint event の順序付き prefix \\
+Registry state checkpoint & frequent, derived & event prefix から導出した authenticated current state \\
+Certificate hash $c$ & immutable & exact theorem、artifact、environment、dependencies \\
+\bottomrule
+\end{tabularx}
+
+この仕組みは replay の代替ではなく hot-path cache である。独立 verifier は必要に応じて certificate chain を再帰的に
+展開し、historical proof artifact を rebuild できる。cross-epoch import は拒否し、migration replay から新しい
+certificate と stub を発行する。
 
 \subsubsection{Sandboxed judge}
 
@@ -486,10 +776,10 @@ idempotent transaction とし、callback replay で二重 certificate や二重 
 
 \subsubsection{Transparency log}
 
-Certificate hash は UTC batch の Merkle tree に追加し、inclusion proof と signed tree head を公開する。
-Merkle root を同一 database に保存するだけでは operator による履歴改変検出が弱いため、root を独立した
-Git repository、release artifact、または別 provider の immutable storage に publish する。
-RFC 9162 の transparency log は certificate domain は異なるが、append-only Merkle log の設計参照になる
+Certificate core digest と issuance digest の組を cumulative Merkle log に追加する。LogReceipt は core の外に置き、
+signed checkpoint、inclusion proof、直前 checkpoint からの consistency proof、少なくとも二つの independent witness
+receipt を公開する。独立した daily tree、同一 database の root、mutable Git tag、inclusion proof だけでは append-only
+を主張しない。RFC 9162 の domain separation と consistency algorithm を profile として固定する
 \cite{rfc9162}。
 
 \section{Certificate schema v2}
@@ -500,34 +790,37 @@ v2 schema は「metadata がある」だけでなく、「第三者が同じ obj
 SLSA が provenance を artifact の origin、time、builder、inputs に関する verifiable information と定義する
 考え方を採り入れる\cite{slsa}。
 
-\begin{tabularx}{\linewidth}{L{37mm}YY}
+\begin{tabularx}{0.96\linewidth}{L{37mm}YY}
 \toprule
 \textbf{Object} & \textbf{Required fields} & \textbf{Verification purpose} \\
 \midrule
-Statement & canonical text, hash, conjecture id, intent revision & 何を証明したかを固定 \\
+Statement & canonical text, hash, conjecture id, target count = 1 & 何を証明したかを一意に固定 \\
 Proof body & exact bytes, hash, author disclosure & user input を固定 \\
 Generated artifact & source blob digest, module path, template id & judge input の再構成を不要にする \\
 Environment & Lean tag + digest, Mathlib commit, manifest hash, epoch & toolchain を同定 \\
 Builder & image digest, architecture, sandbox policy, run id & 実行主体と制限を同定 \\
-Axioms & normalized names, raw report hash, parser version & trust assumptions を監査 \\
-Dependencies & direct / transitive cert hash, module hash, constant & graph と taint を追跡 \\
+Axioms & primitive names, classification, raw report hash, parser version & primitive trust assumptions を監査 \\
+Certified dependencies & cert / type hash, environment digest, registry root, closure hash & graph、same-environment、taint を追跡 \\
 Result & exit status, timestamps, log digest, resource outcome & execution result を検算 \\
-Transparency & batch id, leaf index, inclusion proof, signed root & append-only history を検算 \\
+Issuance attestation & core digest, job expectation, verifier quorum, issuer key / signature & 誰がどの evidence から発行したかを認証 \\
+Log receipt & log id, tree size, leaf index, inclusion / consistency proof, signed checkpoint, witnesses & append-only history と split view を検算 \\
 \bottomrule
 \end{tabularx}
 
 \subsection{Canonicalization}
 
-Certificate payload $P$ は UTF-8、lexicographically sorted object keys、preserved array order、明示的 null policy を持つ
-canonical JSON とする。certificate hash は自身の hash field を除いた canonical bytes に対して計算する。
+CertificateCore $P$ は RFC 8785 JCS と I-JSON 制約に従う。Duplicate key、lone surrogate、non-finite number、
+negative zero、schema 外 field を拒否し、array order と null / omission を schema ごとに固定する。Core digest は
+receipt と signature を一切含まない domain-separated canonical bytes に対して計算する。
 
 \begin{equation}
-  h_C = \operatorname{SHA256}(\operatorname{CanonicalJSON}(P \setminus \{\texttt{certificateHash}\})).
+  d_C = \operatorname{SHA256}(\operatorname{UTF8}(\mathrm{TF\!\! -\! CERT\!\! -\! CORE\!\! -\! V2})\parallel 00_{16}\parallel\operatorname{JCS}(P)).
 \end{equation}
 
-Array order の意味を schema ごとに規定する。たとえば direct imports は request order ではなく canonical constant
-で sort してよいが、Merkle audit path は順序を保持しなければならない。canonicalization implementation は
-golden vectors を公開し、少なくとも二言語で同じ hash を生成することを test する。
+文字列の Unicode normalization や newline 変換を行わない。Direct imports は certificate digest で sort し、Merkle
+audit path は順序を保持する。Versioned JSON Schema を normative artifact とし、required field、type、hash profile、
+unknown field、最大 object / array / string size を固定する。Golden vectors を公開し、少なくとも二言語で同じ digest
+と signature message を生成することを test する。
 
 \subsection{Lifecycle and supersession}
 
@@ -555,6 +848,8 @@ theoremforces verify tcl-cert-20260605-0d2nux
 [ok] generated Lean source hash
 [ok] judge bundle manifest
 [ok] 4 direct certificate dependencies
+[ok] dependency type hashes and logical environment
+[ok] registry checkpoint and acyclic certificate chain
 [ok] Merkle inclusion proof
 [ok] sandbox policy attestation
 [ok] lake build in recorded environment
@@ -658,7 +953,7 @@ incident timeline、再発防止を行う。operator account には MFA / passke
 
 公開 API と repository から確認した current snapshot は次の通りである\cite{tfstats,tfrepo,leanreleases}。
 
-\begin{tabularx}{\linewidth}{L{54mm}L{35mm}Y}
+\begin{tabularx}{0.96\linewidth}{L{54mm}L{35mm}Y}
 \toprule
 \textbf{Indicator} & \textbf{Observed value} & \textbf{Interpretation} \\
 \midrule
@@ -727,6 +1022,43 @@ flagship collection は最低限、次を一つの graph として提示する�
 初期候補は、公開 ledger に連鎖が見える Eisenstein integer / quadratic form 系列である。第二候補として、研究者が
 実際に抱える inverse problem、geometry、analysis 等を選び、単発の toy problem と研究上の target theorem を区別する。
 
+\subsection{Temporal claim consistency pilot}
+
+佃氏の提案する「政治家の過去と現在の発言の矛盾を探す platform」は、certificate layer の非数学分野への
+application pilot になり得る。ただし出力は人物の真偽スコアや自動 \term{lie detector} ではなく、出典付き発言を
+形式化したときに成立する限定的な \term{temporal claim inconsistency certificate} とする。
+
+各発言 evidence object は、原文、speaker、発言日時、source URL と archive / content digest、役職 / jurisdiction、
+対象期間、量化範囲、条件節、modality（事実・予測・公約・評価）、翻訳、formal proposition、formalizer を持つ。
+二つの発言 $a,b$ から直ちに矛盾を宣言せず、同じ正規化 scope $\sigma$ において
+\(F(a,\sigma)=P\) かつ \(F(b,\sigma)=\neg P\) を人間が確認し、その formal target に対する Lean proof を
+一つの L1 attempt として検証する。
+
+\begin{tabularx}{0.96\linewidth}{L{26mm}L{54mm}Y}
+\toprule
+\textbf{Layer} & \textbf{pilot での object} & \textbf{保証しないこと} \\
+\midrule
+L1 & normalized propositions から contradiction を導く単一 theorem & 引用の真正性、翻訳、文脈 \\
+L2 & source snapshot、日時、speaker、digest、formalization provenance & formalization が唯一の解釈であること \\
+L3 & source correction、archive 更新、ontology migration 後の reverification & historical record の消去 \\
+L4 & scope、時制、条件、役職、引用文脈の human review & 人物への道徳的・法的評価 \\
+L5 & 公益性、教育・研究価値に基づく curated collection & popularity による真実性 \\
+\bottomrule
+\end{tabularx}
+
+政策変更、見解の撤回、予測と後日の事実、異なる期間 / jurisdiction / population、編集された引用は、単独では
+logical contradiction と扱わない。UI は \term{formal inconsistency under reviewed scope}、
+\term{context disputed}、\term{not comparable}、\term{corrected} を区別し、formal statement と source mapping を公開する。
+
+\begin{warningbox}{Public-figure pilot の governance gate}
+政治的中立な採用規則、複数媒体への source diversity、原文 archive、二名以上の context review、利益相反開示、
+本人 / 関係者の right of reply、迅速な correction / appeal、defamation・privacy・選挙期の法務確認が必要である。
+この gate を満たすまで人物別ランキング、truth score、自動拡散機能を実装しない。
+\end{warningbox}
+
+初期実験は少数の公開記録に限定し、(1) 比較可能性判定、(2) formalization の再現性、(3) review disagreement、
+(4) correction latency を測る。これは core beta の trust reset を遅らせない独立 design-partner pilot とする。
+
 \subsection{Relationship to mathlib}
 
 Mathlib は Lean 4 の shared mathematical library であり、source、cache、dependency workflow を公開している\cite{mathlib}。
@@ -765,7 +1097,7 @@ artifact を比較できる経路が必要である\cite{reprobuilds}。
 TheoremForces は public documentation 上、single independent maintainer の hobby project であり SLA を持たない\cite{tfabout}。
 この制約を隠さず、同時進行 epic を最大 2、weekly triage を 30 分、monthly roadmap review を 1 回とする。
 
-\begin{tabularx}{\linewidth}{L{48mm}YY}
+\begin{tabularx}{0.96\linewidth}{L{48mm}YY}
 \toprule
 \textbf{Area} & \textbf{Primary responsibility} & \textbf{Required second check} \\
 \midrule
@@ -812,9 +1144,9 @@ liability separation、contributor payment の必要が生じた時点で判断�
 \textbf{Period} & \textbf{Theme} & \textbf{Deliverables} & \textbf{Exit gate} \\
 \midrule
 \endhead
-2026-08 & Trustworthy beta & credential rotation、全 certificate audit、exact artifact storage、schema v2、sandbox fail-closed、stats / docs sync、backup restore drill & 14 days with no critical integrity incident \\
-2026-09 to 10 & Research lighthouse & flagship collection 2、design partner 5-8、first-value onboarding、v4.32.2 shadow migration、verifier alpha & external prover 5、external dependency reuse 1 \\
-2026-11 to 2027-01 & Review and retention & review dimensions、dispute / retraction、curated collections、verifier stable、monthly research session & external prover 10、reviewed 5、curated 2 \\
+2026-08 & Trustworthy beta & credential rotation、全 certificate audit、single-target L1、exact artifact storage、schema v2、certificate registry、sandbox fail-closed、restore drill & 14 days with no critical integrity incident \\
+2026-09 to 10 & Research lighthouse & batch facade、flagship collection 2、design partner 5-8、v4.32.2 shadow migration、verifier alpha & external prover 5、certified dependency reuse 1 \\
+2026-11 to 2027-01 & Review and retention & review dimensions、dispute / retraction、curated collections、temporal consistency pilot design、verifier stable & external prover 10、reviewed 5、curated 2 \\
 2027-02 to 04 & Paid pilot decision & private ledger design partner、cost model、export / deletion / downgrade、support measurement、two-tier offer & 2-3 paid pilots or explicit no-launch decision \\
 2027-05 to 07 & Evidence-driven scale & redundant judge、quarterly migration、independent verifier、transparency report、research collections 3-5 & external prover 25、reviewed 20、curated 10 \\
 \bottomrule
@@ -834,6 +1166,8 @@ liability separation、contributor payment の必要が生じた時点で判断�
 最初の一か月は feature freeze とする。全 387 certificate を audit し、schema v2 と verifier を先に作る。
 toolchain migration は historical record を破壊せず、新 epoch で shadow build してから default を切り替える。
 public repository には \texttt{SECURITY.md}、architecture、reproduction instructions、Issue templates、Milestones を追加する。
+同時に one attempt = one theorem の validator、primitive axiom と certified dependency の分離、same-environment
+registry checkpoint を導入する。certificate の追加は registry root の追記とし、primitive policy version は変更しない。
 
 \subsection{Phase 2: research lighthouse}
 
@@ -909,17 +1243,23 @@ cost / run、active private ledger storage cost、weekly support time、security
 
 一つも満たさない場合は作らない。
 
-\section{Open questions}
+\section{Research questions outside the L1 acceptance meaning}
+
+次の問いは product / governance research であり、CertificateCore、canonicalization、signature、checker quorum、
+artifact identity、retention、log consistency、Gate 0--C を変更または延期する理由にしてはならない。
 
 \begin{enumerate}
-  \item \term{Independent trust root}: batch root をどこへ publish すれば operator-independent verification が実用的か。
-  \item \term{Certificate semantics}: imported certificate constant を axiom として扱う実装と、proof term / source reuse の trade-off をどう示すか。
+  \item \term{Independent witness selection}: 必須の二 witness を超えて、どの operator / jurisdiction に mirror すれば split view 検出を強められるか。
+  \item \term{Batch semantics}: 複数定理 UI の部分成功、retry、collection manifest をどう表示し、atomic acceptance と誤認させないか。
+  \item \term{Registry checkpoint UX}: retained event prefix と current state map の差を、利用者にどう簡潔に説明するか。
+  \item \term{Certificate invalidation}: dependency の失効時に downstream taint と再検証をどの順序で伝播するか。
   \item \term{Environment policy}: monthly Lean release cadence に対し、何 release 以内を target にするか。
   \item \term{Review quorum}: 5-person quorum を維持しつつ、初期 reviewer shortage をどう解消するか。
-  \item \term{Privacy}: private ledger の artifact preservation と user-requested deletion をどう両立するか。
+  \item \term{Privacy UX}: tenant encryption と cryptographic erasure の保証範囲を、private user にどう示すか。
   \item \term{Persistent identifiers}: project-specific certificate id に DOI / SWHID 等を接続するか。
   \item \term{AI benchmarking}: generated proof の model / prompt provenance を privacy と reproducibility の範囲でどこまで記録するか。
   \item \term{Upstream bridge}: mathlib merge 後の certificate dependency migration を自動化するか。
+  \item \term{Temporal claims}: statement ontology、比較可能性、appeal、right of reply を政治的に中立な rule としてどう監査するか。
 \end{enumerate}
 
 \section{Conclusion}
@@ -937,103 +1277,165 @@ review network を育てる。課金と scale は、その証拠の後にのみ�
 human-AI formal mathematics のための長期的な public verification infrastructure になり得る。
 
 \appendix
-\section{Proposed certificate v2 example}
+\section{Certificate v2 envelope example}
 
-\begin{lstlisting}[language={},basicstyle=\ttfamily\scriptsize,caption={Illustrative JSON. Field names are non-normative.}]
+次は三層 topology の縮約例である。掲載した field names とその object topology は normative JSON Schema に一致するが、
+紙幅のため required field の一部を省略している。この紙面例を test vector にせず、repository の完全 fixture を
+schema validation と golden-vector test に使う。Core に signature と receipt は入らない。
+
+\begin{lstlisting}[language={},basicstyle=\ttfamily\scriptsize,caption={Cycle-free certificate envelope topology}]
 {
-  "schema": "tcl-certificate-v2",
-  "certificateId": "tcl-cert-...",
-  "statement": {
-    "sha256": "...",
-    "canonicalTextMediaType": "text/x-lean"
+  "schema": "theoremforces.l1-certificate/2",
+  "core": {
+    "schema": "theoremforces.l1-core/2",
+    "certificate_id": "tf-l1-01JEXAMPLE",
+    "attempt_id": "01JATTEMPT",
+    "issued_at": "2026-08-09T12:00:00Z",
+    "event_sequence": 42,
+    "artifact": {
+      "upload_raw_sha256": "sha256:...",
+      "upload_raw_uri": "cas://sha256/...",
+      "entrypoint_raw_sha256": "sha256:...",
+      "entrypoint_raw_uri": "cas://sha256/...",
+      "manifest_sha256": "sha256:...",
+      "manifest_uri": "cas://sha256/...",
+      "bundle_root_sha256": "sha256:...",
+      "generated_source_sha256": "sha256:...",
+      "generated_source_uri": "cas://sha256/...",
+      "proof_export_sha256": "sha256:...",
+      "proof_export_uri": "cas://sha256/..."
+    },
+    "target": {
+      "challenge_id": "tf-challenge-01JEXAMPLE",
+      "challenge_artifact_sha256": "sha256:...",
+      "challenge_artifact_uri": "cas://sha256/...",
+      "user_declaration_count": 1,
+      "fqname": "TheoremForces.Attempt.solution_target",
+      "declaration_kind": "theorem",
+      "type_sha256": "sha256:...",
+      "value_sha256": "sha256:...",
+      "proof_export_sha256": "sha256:..."
+    },
+    "environment": {
+      "logical_digest": "sha256:...",
+      "manifest_sha256": "sha256:...",
+      "image_digest": "sha256:...",
+      "architecture": "linux/amd64"
+    },
+    "certified_dependencies": {
+      "status": "pass",
+      "registry_checkpoint": "sha256:...",
+      "items": [],
+      "closure_sha256": "sha256:..."
+    },
+    "axioms": {
+      "status": "pass",
+      "policy_sha256": "sha256:...",
+      "primitive_items": [],
+      "closure_sha256": "sha256:..."
+    },
+    "comparator": {"status": "pass", "evidence_sha256": "sha256:..."},
+    "checkers": {"status": "pass", "items": [
+      {"role": "lean_checker", "status": "pass"},
+      {"role": "independent_checker", "status": "pass"}
+    ]},
+    "run": {"outcome": "completed", "structured_result_count": 1},
+    "l1": {"status": "accepted", "reason": "all_predicates_passed"}
   },
-  "submission": {
-    "proofBodySha256": "...",
-    "generatedSource": {
-      "sha256": "...",
-      "uri": "https://.../blobs/sha256/...",
-      "modulePath": "Theoremforces/.../Submission_....lean",
-      "templateId": "tf-wrapper-v2"
-    }
+  "issuance_attestation": {
+    "schema": "theoremforces.l1-issuance-envelope/1",
+    "payload": {
+      "schema": "theoremforces.l1-issuance/1",
+      "core_sha256": "sha256:...",
+      "job_expectation_sha256": "sha256:...",
+      "result_attestation_sha256": "sha256:...",
+      "issuer": {"key_id": "tf-issuer-2026-01", "algorithm": "Ed25519"},
+      "issued_at": "2026-08-09T12:00:00Z"
+    },
+    "signature": "..."
   },
-  "environment": {
-    "epoch": "tf-lean-4.32.2-001",
-    "leanToolchain": "leanprover/lean4:v4.32.2",
-    "mathlibCommit": "<full commit sha>",
-    "lakeManifestSha256": "..."
-  },
-  "builder": {
-    "imageDigest": "sha256:...",
-    "architecture": "linux/arm64",
-    "sandboxPolicy": "tf-sandbox-v2",
-    "runId": "...",
-    "limitsEnforced": true
-  },
-  "axioms": {
-    "normalized": ["Classical.choice", "Quot.sound", "propext"],
-    "rawReportSha256": "...",
-    "parserVersion": "tf-axiom-parser-v2"
-  },
-  "dependencies": {
-    "direct": [
-      {
-        "certificateHash": "sha256:...",
-        "moduleSourceSha256": "...",
-        "canonicalConstant": "Theoremforces.Ledger.Cert_....certified"
-      }
-    ],
-    "transitiveClosureSha256": "..."
-  },
-  "result": {
-    "conclusion": "success",
-    "judgeBundleSha256": "...",
-    "judgeLogSha256": "...",
-    "acceptedAt": "2026-...Z"
-  },
-  "transparency": {
-    "batchId": "...",
-    "leafIndex": 42,
-    "inclusionProof": ["sha256:..."],
-    "signedTreeHead": "..."
-  },
-  "certificateHash": "sha256:..."
+  "log_receipt": {
+    "schema": "theoremforces.l1-log-receipt/2",
+    "core_sha256": "sha256:...",
+    "issuance_sha256": "sha256:...",
+    "leaf_hash": "sha256:...",
+    "tree_size": 42,
+    "leaf_index": 41,
+    "inclusion_path": [],
+    "checkpoint": {
+      "schema": "theoremforces.l1-log-checkpoint-envelope/2",
+      "payload": {
+        "schema": "theoremforces.l1-log-checkpoint/2",
+        "log_id": "tf-log-v2",
+        "algorithm": "rfc6962-sha256",
+        "tree_size": 42,
+        "root_sha256": "sha256:...",
+        "maximum_merge_delay_ms": 300000
+      },
+      "signature": "..."
+    },
+    "consistency": {
+      "old_tree_size": 41,
+      "old_root_sha256": "sha256:...",
+      "consistency_path": []
+    },
+    "witness_receipts": [
+      {"schema": "theoremforces.l1-witness-envelope/2",
+       "payload": {"witness": {"witness_id": "witness-a"}}, "signature": "..."},
+      {"schema": "theoremforces.l1-witness-envelope/2",
+       "payload": {"witness": {"witness_id": "witness-b"}}, "signature": "..."}
+    ]
+  }
 }
 \end{lstlisting}
 
 \section{Verification algorithm}
 
 \begin{lstlisting}[language={},basicstyle=\ttfamily\scriptsize,caption={Reference verification pseudocode}]
-function verify(certificateId, mode):
-    c = downloadCertificate(certificateId)
-    require sha256(canonicalize(withoutHash(c))) == c.certificateHash
+function verify(certificate_id, mode):
+    e = parseStrictJsonAndValidateSchema(downloadEnvelope(certificate_id))
+    core_sha256 = domainSeparatedJcsDigest(e.core)
+    issuance_sha256 = issuanceDigest(e.issuance_attestation.payload)
+    require e.issuance_attestation.payload.core_sha256 == core_sha256
+    require verifyEd25519Envelope(e.issuance_attestation)
+    require issuerKeyValidAtCheckpoint(e.issuance_attestation)
 
-    statement = downloadBlob(c.statement.sha256)
-    proofBody = downloadBlob(c.submission.proofBodySha256)
-    source = downloadBlob(c.submission.generatedSource.sha256)
-    require hashesMatch(statement, proofBody, source)
+    blobs = downloadCasObjects(e.core.artifact)
+    require allExactHashesMatch(blobs, e.core.artifact)
+    require canonicalManifestAndBundleRootMatch(blobs)
+    require jobExpectationMatchesResultAttestation(e.core)
+    source = blobs.generated_source
 
-    direct = resolveDependencies(c.dependencies.direct)
-    require dependencyManifestHash(direct) == c.dependencies.manifestSha256
-    require transitiveClosureHash(direct) == c.dependencies.transitiveClosureSha256
+    direct = resolveDependencies(e.core.certified_dependencies.items)
+    require transitiveClosureHash(direct) ==
+            e.core.certified_dependencies.closure_sha256
+    require certificateGraphIsAcyclic(direct)
+    require everyCertificateValidAtIssueCheckpoint(direct)
+    require showCurrentTaintSeparately(direct)
+    require fullChainCheckerReceiptsPass(direct)
 
-    require verifyMerkleInclusion(c.certificateHash, c.transparency)
-    require verifySignedTreeHead(c.transparency.signedTreeHead)
+    require verifyLogLeaf(core_sha256, issuance_sha256, e.log_receipt)
+    require verifyInclusionAndConsistency(e.log_receipt)
+    require verifySignedCheckpointAndTwoWitnesses(e.log_receipt)
 
     if mode in {REBUILD, MIGRATION}:
-        env = materializeEnvironment(c.environment, mode)
+        require explicitSandboxConsent(mode)
+        env = materializeEnvironment(e.core.environment, mode)
         result = sandboxedLakeBuild(env, source, direct)
-        require result.limitsEnforced
-        require result.conclusion == SUCCESS
-        require normalizeAxioms(result.rawAxiomReport) == c.axioms.normalized
+        require comparatorPass(result)
+        require exportedProofDigestMatches(result, e.core.target)
+        require leanCheckerPass(result) and independentCheckerPass(result)
+        require structuredAxiomClosureMatches(result, e.core.axioms)
+        require exactResourceOutcomeMatches(result, e.core.run)
 
-    return VERIFIED
+    return assuranceVector(e, currentRegistryState())
 \end{lstlisting}
 
 \section{Operational SLO proposal}
 
 Public beta は formal SLA を約束しない。ただし内部 SLO を持ち、capacity と paid readiness の判断に使う。
 
-\begin{tabularx}{\linewidth}{L{55mm}L{32mm}Y}
+\begin{tabularx}{0.96\linewidth}{L{55mm}L{32mm}Y}
 \toprule
 \textbf{Signal} & \textbf{Initial objective} & \textbf{Response} \\
 \midrule
@@ -1043,25 +1445,30 @@ Queue availability & 99.0\% monthly & status update、capacity review \\
 p95 queue wait & under 5 min & concurrency / fairness tuning \\
 p95 judge runtime & under 10 min & timeout taxonomy と challenge-specific review \\
 Infrastructure error rate & under 2\% & automatic retry once、root-cause bucket \\
-Backup RPO & 24 h & daily verified backup \\
-Restore RTO & 4 h & quarterly restore drill \\
-Critical incident acknowledgement & 24 h & operator notification and public status note \\
+Trust-critical RPO & 0 & CAS mirror + witnessed log; any loss pauses mint \\
+Rebuildable analytics RPO & 24 h & daily verified export \\
+Restore drill & monthly & restored head must match independent witnesses \\
+Critical incident page & within 5 min & public status within 60 min; user notice within 24 h \\
 \bottomrule
 \end{tabularx}
 
-\section{Glossary}
+\section{Glossary（用語集）}
 
 \begin{description}[style=nextline,leftmargin=1.5em]
-  \item[Accepted] Recorded environment で acceptance predicate を満たした submission。数学的 endorsement ではない。
+  \item[\hypertarget{glossary:accepted}{Accepted / Lean acceptance}] Recorded environment で acceptance predicate を満たした submission。Lean による機械的受理であり、数学的 endorsement ではない。
+  \item[\hypertarget{glossary:active-pinned-environment}{Active pinned environment}] TheoremForces が新規判定や再検査の標準として現在固定している Lean、Mathlib、manifest、judge image、policy の組。上流の最新安定版とは一致しない場合がある。
   \item[Artifact] Judge が実際に処理した generated Lean source と bundle contents。
   \item[Certificate] Artifact、environment、axiom、dependency、result を content-addressed metadata として固定した record。
   \item[Conjecture] User が証明対象として提示する formal target と human-readable intent。
+  \item[\hypertarget{glossary:endorsement}{Endorsement}] Lean の型検査成功とは別に、人間または community が formal statement と意図の一致や数学的価値を認めること。本書では主に L4（Intent review）と L5（Curation）に対応する。
   \item[Environment epoch] Lean、Mathlib、manifest、judge image、policy をまとめた versioned execution environment。
   \item[Intent review] Formal statement と informal mathematical claim の alignment review。
   \item[Migration] Historical certificate を別 environment epoch で再検査し compatibility status を記録すること。
   \item[Provenance complete] Exact artifact と生成・実行・依存 metadata が第三者検算可能な状態。
   \item[Reverified] Original acceptance とは別に、指定 environment で再度 build に成功した状態。
+  \item[\hypertarget{glossary:semantic-provenance}{Semantic provenance}] Formal statement がどの informal intent、定義、依存関係、review record と結びつき、どう解釈・評価されたかを追跡できる意味上の来歴。Kernel acceptance や artifact provenance とは分けて記録する。
   \item[Seeds] Platform 内 reputation point。money、token、redeemable asset ではない。
+  \item[\hypertarget{glossary:upstream-stable-release}{Upstream stable release}] Lean upstream project が公開している最新の正式安定版。TheoremForces が active pinned environment へ採用済みであることは意味しない。
 \end{description}
 
 \section*{References}
@@ -1177,6 +1584,21 @@ in-toto Project,
 B. Laurie et al.,
 ``Certificate Transparency Version 2.0,'' RFC 9162, IETF, 2021,
 \url{https://www.rfc-editor.org/rfc/rfc9162.html}.
+
+\bibitem{rfc8785}
+A. Rundgren et al.,
+``JSON Canonicalization Scheme (JCS),'' RFC 8785, IETF, 2020,
+\url{https://www.rfc-editor.org/rfc/rfc8785.html}.
+
+\bibitem{rfc8032}
+S. Josefsson and I. Liusvaara,
+``Edwards-Curve Digital Signature Algorithm (EdDSA),'' RFC 8032, IETF, 2017,
+\url{https://www.rfc-editor.org/rfc/rfc8032.html}.
+
+\bibitem{leancomparator}
+Lean Project,
+``Comparator: validate untrusted Lean proofs against trusted challenges,''
+\url{https://github.com/leanprover/comparator}, accessed 2026-08-09.
 \end{thebibliography}
 
 \vfill
@@ -1184,7 +1606,7 @@ B. Laurie et al.,
 \color{TFLine}\rule{0.55\textwidth}{0.5pt}
 
 \small\sffamily\color{TFMuted}
-TheoremForces White Paper - Version 0.1.0\\
+TheoremForces White Paper - Version 0.3.0 - 2026-08-09\\
 Source and compiled PDF are maintained in the public judge repository.
 \end{center}
 
