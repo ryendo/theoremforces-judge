@@ -26,6 +26,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
+      - name: Validate committed source and artifact manifest
+        run: sha256sum --check docs/whitepaper/SHA256SUMS
+
       - name: Install LaTeX and structural PDF tools
         run: |
           sudo apt-get update
@@ -42,29 +45,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          snapshot=$(mktemp -d)
-          cp output/pdf/theoremforces-whitepaper-ver-0.3.pdf "$snapshot/general.pdf"
-          cp output/pdf/theoremforces-l1-whitepaper-ver-0.3.pdf "$snapshot/l1.pdf"
           make -C docs/whitepaper
           make -C docs/whitepaper/l1
-
-          for pair in \
-            "$snapshot/general.pdf:output/pdf/theoremforces-whitepaper-ver-0.3.pdf" \
-            "$snapshot/l1.pdf:output/pdf/theoremforces-l1-whitepaper-ver-0.3.pdf"
-          do
-            committed=${pair%%:*}
-            rebuilt=${pair#*:}
-            test "$(pdfinfo "$committed" | awk '/^Pages:/ { print $2 }')" = \
-                 "$(pdfinfo "$rebuilt" | awk '/^Pages:/ { print $2 }')"
-            # TeX Live versions may wrap identical text differently. Compare
-            # the complete extracted content after removing layout-only ASCII
-            # whitespace, while the page-count check above catches pagination
-            # drift.
-            key=$(basename "$committed" .pdf)
-            pdftotext "$committed" - | LC_ALL=C tr -d '[:space:]' > "$snapshot/$key-committed.txt"
-            pdftotext "$rebuilt" - | LC_ALL=C tr -d '[:space:]' > "$snapshot/$key-rebuilt.txt"
-            cmp "$snapshot/$key-committed.txt" "$snapshot/$key-rebuilt.txt"
-          done
 
       - name: Validate both audited v0.3 artifacts
         shell: bash

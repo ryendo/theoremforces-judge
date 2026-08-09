@@ -21,3 +21,6 @@ output/pdf/theoremforces-whitepaper-ver-0.3.pdf
 ```
 
 Temporary LaTeX files are written under `tmp/pdfs/`.
+
+`SHA256SUMS` pins both sources, both build recipes, and both published v0.3
+artifacts. Update it only after rebuilding and visually reviewing every page.
