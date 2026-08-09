@@ -1,29 +1,33 @@
-# Leanforces judge repository (template)
+# TheoremForces judge repository (issuance paused)
 
-This directory is the template for the **public judge repository** that
-Leanforces talks to. Copy it into a fresh GitHub repo, then
-configure the web app to point at that repo via the `GITHUB_*` env vars.
+This repository preserves the historical Lean environment and public evidence
+for TheoremForces. The legacy GitHub Actions judge is permanently retired:
+`.github/workflows/check-submission.yml` rejects every stale submission branch
+fail-closed, and must not be treated as an acceptance authority.
 
-Operator responsibilities:
+Public L1 issuance remains paused until every v0.3 Gate C requirement is
+implemented and independently approved. Do not copy this repository or set
+`GITHUB_*` variables to create a production judge.
 
-- Protect `main`. Only Leanforces's GitHub token may push (and only to
-  `submission/*` branches).
+Historical-environment responsibilities:
+
+- Protect `main`; no service token may create submission branches.
 - Keep `lean-toolchain`, `lakefile.lean`, `lake-manifest.json`, the
   `.github/workflows/check-submission.yml` file, and every
   `Statement.lean` under operator-only control. Users never touch them.
-- Set the repo to public so visitors can audit the Lean files that were
-  actually compiled.
+- Keep the repository public so visitors can audit historical Lean sources and
+  the current trust specifications.
 
-Adding a new challenge:
+Maintaining historical challenge sources:
 
 1. Create `Leanforces/Challenges/<slug>/Statement.lean`.
 2. Re-export from `Leanforces.lean` so the default target picks it up.
-3. Use the Leanforces admin UI to register the challenge with matching
+3. Use the TheoremForces admin UI to register the challenge with matching
    `slug`, `theoremName`, `theoremStatement`, `namespaceName`, and
    `imports`.
 
-The workflow filter (`Leanforces/Challenges/**/Submissions/Submission_*.lean`)
-ensures non-submission files don't trigger CI.
+This maintenance process does not issue certificates. New acceptance must use
+the independent-checker v0.3 pipeline after Gate C is released.
 
 ## White paper
 
@@ -32,5 +36,9 @@ certificate architecture, threat model, governance, operating targets, and a
 12-month implementation roadmap.
 
 - [LaTeX source](docs/whitepaper/theoremforces-whitepaper.tex)
-- [Compiled PDF](output/pdf/theoremforces-whitepaper.pdf)
+- [Compiled v0.3 white paper](output/pdf/theoremforces-whitepaper-ver-0.3.pdf)
+- [Compiled v0.3 L1 white paper](output/pdf/theoremforces-l1-whitepaper-ver-0.3.pdf)
 - [Build instructions](docs/whitepaper/README.md)
+
+Superseded PDFs are kept under `output/pdf/archive/` for provenance only and
+are not current specifications.

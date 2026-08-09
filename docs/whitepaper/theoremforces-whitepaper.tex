@@ -629,10 +629,11 @@ Lean build は外部 isolated judge が担当する。web server 自身は Lean 
 static filter、type-checking trailer、pinned toolchain、HMAC-authenticated callback を組み合わせる
 \cite{tfabout,tfjudging,tfsecurity}。
 
-公開 judge repository は Lean v4.13.0 と Mathlib v4.13.0 を pin し、GitHub Actions workflow で
-targeted \texttt{lake build}、axiom whitelist enforcement、machine-readable axiom report を実装している
-\cite{tfrepo}。一方、公開 submission は isolated arm64 worker を示しているため、public repository と
-production topology の関係を architecture document で明示する必要がある。
+公開 judge repository は Lean v4.13.0 と Mathlib v4.13.0 を pin した historical environment と evidence を
+保持するが、旧 GitHub Actions judge は 2026-08-09 に恒久停止し、stale submission branch を fail-closed で
+拒否する \cite{tfrepo}。この workflow は certificate acceptance authority ではない。v0.3 Gate C の
+independent-checker pipeline が実装・承認されるまで public L1 issuance は停止し、web、queue consumer、Pi worker、
+admin fallback の全経路が同じ release gate に従わなければならない。
 
 \subsection{Target pipeline}
 
