@@ -98,6 +98,11 @@
   boxrule=0.7pt,arc=2mm,left=3mm,right=3mm,top=2mm,bottom=2mm,
   title={#1},fonttitle=\sffamily\bfseries,coltitle=TFRed
 }
+\newtcolorbox{atomicgatebox}[1]{
+  enhanced,colback=TFRed!4,colframe=TFRed!75,
+  boxrule=0.7pt,arc=2mm,left=3mm,right=3mm,top=2mm,bottom=2mm,
+  title={#1},fonttitle=\sffamily\bfseries,coltitle=TFRed
+}
 \newtcolorbox{decisionbox}[1]{
   enhanced,breakable,colback=TFBlue!4,colframe=TFBlue!80,
   boxrule=0.7pt,arc=2mm,left=3mm,right=3mm,top=2mm,bottom=2mm,
@@ -244,6 +249,17 @@ deploy してもよいが、新規 \term{L1 accepted} issuance は MUST remain d
 \code{legacy-incomplete} と表示する。
 \end{warningbox}
 
+\subsection{Current production persistence boundary}
+
+2026-08-09 時点の production web は Cloudflare D1 を Prisma D1 adapter 経由で使用する。この adapter 経路は、
+certificate issuance、accepted transition、economy / reputation credit、ledger event、bounty settlement にまたがる
+multi-row mutation に必要な atomic multi-statement transaction を提供しない。したがって current deployment の
+trust-critical public acceptance / issuance surface は write-disabled であり、公開側には public browsing と historical
+record の表示だけを提供する。新規 L1 issuance、関連 credit / ledger / bounty mutation、judge queue delivery は fail-closed
+に保つ。これは application の全 write を禁止する主張ではない。Private draft 保存、registry の non-issuance maintenance、
+API の non-issuance write は分離した boundary で継続し得るが、L1 acceptance または issuance-coupled side effect を生成・変更
+してはならない。この停止は Gate C 合格を意味せず、L1-ATOM-001 の release evidence が揃うまで解除しない。
+
 \subsection{Hostile Lean and checker quorum}
 
 User-controlled Lean source、macro、command、tactic、plugin、import、\code{.olean} は hostile input である。
@@ -307,6 +323,7 @@ L1-RUN-001 & Limit と actual CPU / wall / RSS / PID / file / disk / inode / out
 L1-RUN-002 & Exit 0、expected structured result exactly once、no truncation、全 checker PASS が accepted の必須条件。 \\
 L1-FAIL-001 & \code{accepted|rejected|indeterminate} と versioned reason precedence を固定し、attempt receipt と certificate を分ける。 \\
 L1-FAIL-002 & Terminal transition は conditional DB write で atomic かつ一度。Duplicate / late callback は state を変えない。 \\
+L1-ATOM-001 & Certificate、terminal state、economy / reputation credit、ledger event、bounty settlement の multi-row mutation は一つの atomic persistence boundary で commit する。Prisma D1 adapter の個別 write 列を transaction と扱わず、選定した atomic design が crash / retry / concurrent-finalize test に合格するまで issuance と全付随 mutation を fail-closed にする。 \\
 L1-REP-001 & Verifier default は non-executing metadata mode。\code{--replay} は explicit opt-in と強制 sandbox を要求する。 \\
 L1-RET-001 & Accepted certificate の全 replay object、failure attempt、event、receipt を lifetime 中取得可能にする。欠落時は \code{replay-unavailable} event を追記する。 \\
 L1-UNI-001 & Source bytes は非正規化で hash し、UI は bidi / control / default-ignorable を可視化して escaped byte view を提供する。 \\
@@ -373,6 +390,17 @@ State は \code{received -> dispatched -> result-attested -> independently-verif
 boundary で exactly once にする。Object store / queue / log の eventual work は outbox event で継続し、published 前は public
 accepted と数えない。Retry は新 attempt、reverification は新 event であり historical row を上書きしない。
 
+\begin{atomicgatebox}{Atomic Persistence Gate}
+Prisma D1 adapter は、この multi-row acceptance boundary に必要な atomic multi-statement transaction を提供しない。
+解除可能な設計は、(a) D1 \code{batch()} と同じ atomic batch 内の transactional outbox に対する invariant の証明、
+(b) Durable Object による single-writer serialization、または (c) multi-statement transaction を提供する database を含むが、
+選択は versioned ADR と conformance evidence に固定する。各 statement 直前・直後の crash、duplicate / late callback、retry、
+二重 submit、並行 finalize、out-of-order delivery を fault injection し、partial certificate、二重 credit、orphan ledger event、
+二重 bounty payment が 0 件であることを検証する。Object store、queue、transparency log は DB transaction に含まれると
+仮定せず、durable outbox と idempotent consumer で接続する。合格前は certificate / economy / ledger / bounty の全 mutation
+を無効にし、Gate C の 30 日観測 clock を開始しない。
+\end{atomicgatebox}
+
 \subsection{Cumulative transparency and dependency state}
 
 \term{LogLeafV2} は \code{schema = theoremforces.l1-log-leaf/2}、
@@ -408,7 +436,8 @@ rebuild、full-chain replay を別々に表示する。
 
   \item[Gate C - Production readiness]
   30 日間、必須 evidence 100\%、sampled replay 100\%、false acceptance 0、checker divergence 0 を維持し、issuance
-  kill-switch、key revocation、restore、log fork、downstream taint drill を完了する。
+  kill-switch、key revocation、restore、log fork、downstream taint drill を完了する。観測開始前に L1-ATOM-001 の
+  atomic design を固定し、crash / retry / callback replay / parallel-finalize test を全件通す。
 \end{description}
 
 \section{L1 が解く問題}
@@ -1216,12 +1245,14 @@ set が全件一致すること。取得不能、手作業修正、moving tag �
   \item sampled daily replay、integrity alert、issuance kill switch、incident playbook を運用する。
   \item environment migration の candidate corpus と append-only reverification event を実装する。
   \item certificate invalidation の downstream taint propagation と issuance kill switch を drill する。
+  \item atomic persistence design を ADR で固定し、certificate / economy / ledger / bounty の crash / concurrency corpus を全件通す。
   \item public L1 export と verifier documentation を公開し、外部 operator の replay receipt を受け付ける。
 \end{itemize}
 
 \begin{decisionbox}{Gate C}
 30 日間、必須 evidence 完備率 100\%、sampled replay 一致率 100\%、false acceptance 0 を維持し、
-kill switch と key revocation drill を完了すること。これを L1 production readiness の最低条件とする。
+kill switch と key revocation drill を完了すること。この 30 日 clock は L1-ATOM-001 の crash / concurrency corpus が
+100\% 合格した後にのみ開始する。これを L1 production readiness の最低条件とする。
 \end{decisionbox}
 
 \subsection{ownership}
@@ -1255,6 +1286,7 @@ Incident response & service owner & public post-incident approver \\
   \item logical epoch / primitive policy と append-only registry checkpoint を別に versioning する。
   \item timeout、infrastructure error、unknown axiom / parser は fail-closed とする。
   \item retry、migration、revocation は append-only event とし、historical result を上書きしない。
+  \item Certificate / economy / ledger / bounty の multi-row mutation は proven atomic boundary に置き、未達時は全経路を fail-closed にする。
   \item platform signature を replay の代替にしない。
   \item target identity は pinned versioned kernel declaration / proof export encoding とし、pretty-printer を使わない。
   \item canonical JSON は RFC 8785 JCS + I-JSON、signature は Ed25519、三層 envelope とする。

@@ -98,6 +98,13 @@
   left=3mm,right=3mm,top=2mm,bottom=2mm,
   title={#1},fonttitle=\sffamily\bfseries,coltitle=TFRed
 }
+\newtcolorbox{atomicgatebox}[1]{
+  enhanced,
+  colback=TFRed!4,colframe=TFRed!75,
+  boxrule=0.7pt,arc=2mm,
+  left=3mm,right=3mm,top=2mm,bottom=2mm,
+  title={#1},fonttitle=\sffamily\bfseries,coltitle=TFRed
+}
 \newtcolorbox{decisionbox}[1]{
   enhanced,breakable,
   colback=TFBlue!4,colframe=TFBlue!80,
@@ -258,6 +265,7 @@ automated conformance test と evidence URI を持たなければならない。
 \midrule
 TF-CONF-001 & 各 MUST に stable ID、owner、test、release evidence を対応させ、unknown / skipped test を pass と数えない。 \\
 TF-CLAIM-001 & Exact blob、external log receipt、full-chain verifier が揃うまで再現性・追記性を断定しない。UI/API/CLI は assurance layer と不足 evidence を別々に示す。 \\
+TF-ATOM-001 & Certificate issuance、accepted transition、economy / reputation credit、ledger event、bounty settlement の multi-row mutation は一つの atomic persistence boundary で commit する。現行 Prisma D1 adapter 経路を transaction と見なさず、atomic design と crash / concurrency test が合格するまで全経路を fail-closed にする。 \\
 TF-OPS-001 & False acceptance、artifact mismatch、checker divergence、log fork、signing key incident の一件で 5 分以内に automatic mint pause する。 \\
 TF-GOV-001 & Trust-critical release は独立した二人の approver、protected main、signed release、rollback plan を要求する。第二 approver がいなければ mint を停止する。 \\
 \bottomrule
@@ -314,6 +322,20 @@ Runner は同じ値、run ID、attempt number、pre/post input root、resource o
 の単調遷移とする。Public certificate、accepted status、reputation credit は最後の遷移を一度だけ atomic に commit
 した後にのみ可視化する。Object store、database、queue、log を架空の単一 transaction と見なさず、transactional
 outbox と idempotency key を使う。Retry は新しい attempt であり、元 attempt を上書きしない。
+
+\clearpage
+\begin{atomicgatebox}{Atomic Persistence Gate (Gate C mandatory precondition)}
+2026-08-09 時点の Prisma D1 adapter は、この受理境界に必要な multi-statement atomic transaction を提供しない。
+したがって certificate issuance、accepted status、economy / reputation credit、ledger event、bounty settlement のうち
+一つでも複数 row にまたがる mutation は、個別の
+\code{create} / \code{update} 呼出しの列を transaction と扱ってはならず、public 経路を fail-closed に保つ。
+解除には、(a) D1 \code{batch()} と transactional outbox に対する invariant の証明、(b) Durable Object による
+single-writer serialization、または (c) multi-statement transaction を提供する database のいずれかを ADR で固定し、
+各 statement 直前・直後の crash、duplicate / late callback、retry、二重 submit、並行 finalize、out-of-order delivery を
+網羅した fault-injection / concurrency test で、partial certificate、二重 credit、orphan ledger event、二重 bounty payment が
+0 件であることを示さなければならない。External object / queue / transparency log は同じ DB transaction の一部と偽らず、
+durable outbox と idempotent consumer で接続する。この gate の release evidence がない限り Gate C の 30 日観測を開始しない。
+\end{atomicgatebox}
 
 \begin{principlebox}{TF-ACC-001 - conjunctive, fail-closed acceptance}
 \code{published} は exact artifact match、immutable expectation match、one target、trusted challenge binding、
@@ -411,7 +433,8 @@ test corpus に含め、DAG depth / node cap と moderation audit event を要�
   \item \term{Gate B - Independent replay}: clean host で対象 sample の 100\% を再構成し、Comparator、Lean checker、
         independent checker、type / value / export / axiom digest が一致する。
   \item \term{Gate C - Production readiness}: 30 日間、必須 evidence 100\%、sampled replay 100\%、false acceptance 0、
-        mint kill-switch、key revocation、restore、log fork、downstream taint drill を完了する。
+        mint kill-switch、key revocation、restore、log fork、downstream taint drill を完了する。30 日 clock の開始前に
+        TF-ATOM-001 の atomic persistence design を固定し、crash / retry / callback replay / parallel-finalize test を全件通す。
 \end{enumerate}
 
 初期 SLO は minted integrity mismatch 0 件、log integration 99.9\% within 10 minutes、certificate / artifact read
@@ -634,6 +657,15 @@ static filter、type-checking trailer、pinned toolchain、HMAC-authenticated ca
 拒否する \cite{tfrepo}。この workflow は certificate acceptance authority ではない。v0.3 Gate C の
 independent-checker pipeline が実装・承認されるまで public L1 issuance は停止し、web、queue consumer、Pi worker、
 admin fallback の全経路が同じ release gate に従わなければならない。
+
+同日時点の production persistence は Cloudflare D1 と Prisma D1 adapter を使うが、この adapter 経路は certificate、
+economy / reputation、ledger、bounty の multi-row mutation に必要な atomic transaction boundary を提供しない。
+したがって current deployment の trust-critical public acceptance / issuance surface は write-disabled であり、公開側には
+public browsing と historical record の表示だけを提供する。新規 certificate mint、accepted transition、credit、ledger
+append、bounty settlement、および judge queue delivery は fail-closed に保つ。これは application の全 write を禁止する
+主張ではない。Private draft 保存、registry の non-issuance maintenance、API の non-issuance write は分離した boundary で
+継続し得るが、certificate / accepted state / credit / ledger / bounty side effect を生成または変更してはならない。この
+停止状態は TF-ATOM-001 を満たした証拠ではなく、atomic design の選定と crash / concurrency conformance test 完了まで解除しない。
 
 \subsection{Target pipeline}
 
