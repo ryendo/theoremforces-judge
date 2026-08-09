@@ -30,7 +30,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends \
-            fonts-harano-aji \
             latexmk \
             poppler-utils \
             texlive-fonts-recommended \
