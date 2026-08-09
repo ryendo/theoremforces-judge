@@ -30,6 +30,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends \
+            fonts-texgyre \
             latexmk \
             poppler-utils \
             texlive-fonts-recommended \
